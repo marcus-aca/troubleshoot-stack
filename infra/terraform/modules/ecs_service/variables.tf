@@ -1,0 +1,78 @@
+variable "cluster_name" {
+  type        = string
+  description = "ECS cluster name."
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC ID for the ECS service."
+}
+
+variable "subnet_ids_private" {
+  type        = list(string)
+  description = "Private subnet IDs for the service."
+}
+
+variable "subnet_ids_public" {
+  type        = list(string)
+  description = "Public subnet IDs for the load balancer if used."
+}
+
+variable "container_image" {
+  type        = string
+  description = "Container image URI."
+}
+
+variable "cpu" {
+  type        = number
+  description = "Task CPU units."
+}
+
+variable "memory" {
+  type        = number
+  description = "Task memory (MiB)."
+}
+
+variable "port" {
+  type        = number
+  description = "Container port."
+}
+
+variable "desired_count" {
+  type        = number
+  description = "Desired task count."
+}
+
+variable "env_vars_secret_arns" {
+  type        = list(string)
+  description = "Secret ARNs to inject as environment variables."
+  default     = []
+}
+
+variable "task_role_arn" {
+  type        = string
+  description = "IAM task role ARN."
+}
+
+variable "execution_role_arn" {
+  type        = string
+  description = "IAM execution role ARN."
+}
+
+variable "alb_enabled" {
+  type        = bool
+  description = "Whether to provision an ALB."
+  default     = true
+}
+
+variable "alb_listener_port" {
+  type        = number
+  description = "ALB listener port."
+  default     = 80
+}
+
+variable "log_group_name" {
+  type        = string
+  description = "CloudWatch log group name for ECS task logs."
+  default     = null
+}
