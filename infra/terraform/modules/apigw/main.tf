@@ -15,9 +15,16 @@ locals {
 
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
+data "aws_cloudwatch_log_groups" "existing" {
+  log_group_name_prefix = local.access_log_group_name
+}
+
+locals {
+  apigw_log_group_exists = contains(data.aws_cloudwatch_log_groups.existing.log_group_names, local.access_log_group_name)
+}
 
 resource "aws_cloudwatch_log_group" "access_logs" {
-  count             = var.access_log_group_name == null ? 1 : 0
+  count             = var.manage_log_group && !local.apigw_log_group_exists ? 1 : 0
   name              = local.access_log_group_name
   retention_in_days = var.log_retention_in_days
 }
@@ -90,7 +97,7 @@ resource "aws_api_gateway_stage" "this" {
   stage_name    = var.stage_name
 
   access_log_settings {
-    destination_arn = var.access_log_group_name == null ? aws_cloudwatch_log_group.access_logs[0].arn : format(
+    destination_arn = format(
       "arn:aws:logs:%s:%s:log-group:%s",
       data.aws_region.current.name,
       data.aws_caller_identity.current.account_id,

@@ -4,24 +4,6 @@ variable "names" {
   default     = {}
 }
 
-variable "log_groups" {
-  type        = list(string)
-  description = "Log group names to create or manage."
-  default     = []
-}
-
-variable "manage_log_groups" {
-  type        = bool
-  description = "Whether to create/manage log groups."
-  default     = true
-}
-
-variable "log_retention_in_days" {
-  type        = number
-  description = "Retention period in days for managed log groups."
-  default     = 14
-}
-
 variable "api_gateway_name" {
   type        = string
   description = "API Gateway REST API name for metrics."

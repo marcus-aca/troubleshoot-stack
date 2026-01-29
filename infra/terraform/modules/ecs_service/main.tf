@@ -3,6 +3,19 @@ locals {
 }
 
 data "aws_region" "current" {}
+data "aws_cloudwatch_log_groups" "existing" {
+  log_group_name_prefix = local.log_group_name
+}
+
+locals {
+  log_group_exists = contains(data.aws_cloudwatch_log_groups.existing.log_group_names, local.log_group_name)
+}
+
+resource "aws_cloudwatch_log_group" "service" {
+  count             = local.log_group_exists ? 0 : 1
+  name              = local.log_group_name
+  retention_in_days = var.log_retention_in_days
+}
 
 resource "aws_ecs_cluster" "this" {
   name = var.cluster_name
@@ -149,4 +162,28 @@ resource "aws_ecs_service" "this" {
   }
 
   depends_on = [aws_lb_listener.http]
+}
+
+resource "aws_appautoscaling_target" "ecs" {
+  max_capacity       = var.max_capacity
+  min_capacity       = var.min_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "ecs_cpu" {
+  name               = "${var.cluster_name}-cpu-target"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    target_value = var.cpu_target_value
+
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+  }
 }

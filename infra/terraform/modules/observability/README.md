@@ -4,9 +4,6 @@ Creates CloudWatch log groups, dashboards, and alarms.
 
 ## Inputs
 - `names`
-- `log_groups`
-- `manage_log_groups`
-- `log_retention_in_days`
 - `api_gateway_name`
 - `api_gateway_stage`
 - `alb_arn_suffix`

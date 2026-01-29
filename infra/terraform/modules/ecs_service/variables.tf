@@ -43,6 +43,24 @@ variable "desired_count" {
   description = "Desired task count."
 }
 
+variable "min_capacity" {
+  type        = number
+  description = "Minimum task count for autoscaling."
+  default     = 1
+}
+
+variable "max_capacity" {
+  type        = number
+  description = "Maximum task count for autoscaling."
+  default     = 4
+}
+
+variable "cpu_target_value" {
+  type        = number
+  description = "Target CPU utilization percentage for autoscaling."
+  default     = 50
+}
+
 variable "env_vars_secret_arns" {
   type        = list(string)
   description = "Secret ARNs to inject as environment variables."
@@ -75,4 +93,10 @@ variable "log_group_name" {
   type        = string
   description = "CloudWatch log group name for ECS task logs."
   default     = null
+}
+
+variable "log_retention_in_days" {
+  type        = number
+  description = "Retention period in days for the ECS log group."
+  default     = 14
 }

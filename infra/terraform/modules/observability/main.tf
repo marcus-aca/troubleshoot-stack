@@ -1,7 +1,4 @@
 data "aws_region" "current" {}
-data "aws_cloudwatch_log_groups" "existing" {
-  log_group_name_prefix = "/"
-}
 
 locals {
   dashboard_name = coalesce(lookup(var.names, "dashboard", null), "troubleshooter-${var.api_gateway_stage}")
@@ -126,12 +123,6 @@ locals {
     substr(local.alb_widgets, 1, length(local.alb_widgets) - 2)
   ) : substr(local.base_widgets, 1, length(local.base_widgets) - 2)
   dashboard_body = format("{\"widgets\":[%s]}", local.widgets_json)
-}
-
-resource "aws_cloudwatch_log_group" "managed" {
-  for_each          = var.manage_log_groups ? setsubtract(toset(var.log_groups), toset(data.aws_cloudwatch_log_groups.existing.log_group_names)) : toset([])
-  name              = each.value
-  retention_in_days = var.log_retention_in_days
 }
 
 resource "aws_cloudwatch_dashboard" "this" {

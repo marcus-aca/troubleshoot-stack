@@ -65,8 +65,6 @@ locals {
     local.bedrock_policy_statement
   )
 
-  has_task_policy = length(local.task_policy_statements) > 0
-
   task_policy_document = jsonencode({
     Version = "2012-10-17"
     Statement = local.task_policy_statements
@@ -79,7 +77,6 @@ resource "aws_iam_role" "ecs_task" {
 }
 
 resource "aws_iam_role_policy" "ecs_task_inline" {
-  count  = var.task_policy_json != null || local.has_task_policy ? 1 : 0
   name   = "${var.ecs_task_role_name}-inline"
   role   = aws_iam_role.ecs_task.id
   policy = var.task_policy_json == null ? local.task_policy_document : var.task_policy_json

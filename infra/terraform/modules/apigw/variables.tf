@@ -48,6 +48,12 @@ variable "access_log_group_name" {
   default     = null
 }
 
+variable "manage_log_group" {
+  type        = bool
+  description = "Whether to create/manage the API Gateway access log group."
+  default     = true
+}
+
 variable "custom_domain_name" {
   type        = string
   description = "Custom domain name for API Gateway (optional)."

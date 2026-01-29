@@ -27,12 +27,16 @@ module "ecs_service" {
   memory               = var.ecs_memory
   port                 = var.ecs_port
   desired_count        = var.ecs_desired_count
+  min_capacity         = var.ecs_min_capacity
+  max_capacity         = var.ecs_max_capacity
+  cpu_target_value     = var.ecs_cpu_target_value
   env_vars_secret_arns = []
   task_role_arn        = module.iam.ecs_task_role_arn
   execution_role_arn   = module.iam.ecs_execution_role_arn
   alb_enabled          = true
   alb_listener_port    = var.ecs_alb_listener_port
   log_group_name       = local.ecs_log_group_name
+  log_retention_in_days = var.observability_log_retention_in_days
 }
 
 module "iam" {
@@ -89,18 +93,18 @@ module "apigw" {
   openapi_spec_path     = var.openapi_spec_path
   rest_api_name         = local.apigw_name
   access_log_group_name = local.apigw_access_log_group
+  manage_log_group      = true
   alb_dns_name          = module.ecs_service.alb_dns_name
   alb_listener_port     = var.ecs_alb_listener_port
   stage_name            = var.api_stage_name
   usage_plans           = var.api_usage_plans
-  log_retention_in_days = 14
+  log_retention_in_days = var.observability_log_retention_in_days
 
   custom_domain_name = var.api_custom_domain_name
   certificate_arn    = var.api_custom_domain_certificate_arn
   hosted_zone_id     = var.api_custom_domain_hosted_zone_id
   base_path          = var.api_custom_domain_base_path
 
-  depends_on = [module.observability]
 }
 
 module "observability" {
@@ -110,8 +114,6 @@ module "observability" {
     dashboard = "troubleshooter-${var.api_stage_name}"
   }
 
-  log_groups                             = concat([local.ecs_log_group_name, local.apigw_access_log_group], var.observability_log_groups)
-  log_retention_in_days                  = var.observability_log_retention_in_days
   api_gateway_name                       = local.apigw_name
   api_gateway_stage                      = var.api_stage_name
   alb_arn_suffix                         = module.ecs_service.alb_arn_suffix

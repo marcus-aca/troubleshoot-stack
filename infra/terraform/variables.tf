@@ -65,6 +65,24 @@ variable "ecs_desired_count" {
   default     = 2
 }
 
+variable "ecs_min_capacity" {
+  type        = number
+  description = "Minimum ECS task count for autoscaling."
+  default     = 1
+}
+
+variable "ecs_max_capacity" {
+  type        = number
+  description = "Maximum ECS task count for autoscaling."
+  default     = 4
+}
+
+variable "ecs_cpu_target_value" {
+  type        = number
+  description = "Target CPU utilization percentage for ECS autoscaling."
+  default     = 50
+}
+
 variable "ecs_alb_listener_port" {
   type        = number
   description = "ALB listener port for the ECS service."
@@ -175,12 +193,6 @@ variable "frontend_bucket_name" {
   type        = string
   description = "S3 bucket for static frontend assets."
   default     = "troubleshooter-frontend"
-}
-
-variable "observability_log_groups" {
-  type        = list(string)
-  description = "Additional log groups managed by the observability module."
-  default     = []
 }
 
 variable "observability_log_retention_in_days" {
