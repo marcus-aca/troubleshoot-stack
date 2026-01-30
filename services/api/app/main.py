@@ -5,8 +5,10 @@ from typing import List
 from uuid import uuid4
 
 from fastapi import FastAPI, Header, HTTPException, Request
+from pydantic import ValidationError
 
 from .parser import RuleBasedLogParser
+from .llm.orchestrator import LLMOrchestrator
 from .schemas import (
     CanonicalResponse,
     ExplainRequest,
@@ -16,11 +18,13 @@ from .schemas import (
     TriageRequest,
 )
 from .storage import get_storage
+from .observability import log_event
 
 app = FastAPI(title="Troubleshooter API", version="0.1.0")
 
 storage = get_storage()
 parser = RuleBasedLogParser()
+llm_orchestrator = LLMOrchestrator(storage=storage, parser=parser)
 
 
 @app.middleware("http")
@@ -50,30 +54,22 @@ async def triage(payload: TriageRequest, request: Request) -> CanonicalResponse:
     if not raw_text:
         raise HTTPException(status_code=400, detail="raw_text is required")
 
-    input_id = storage.save_input(conversation_id, request_id, raw_text)
-    frame = parser.parse(raw_text, request_id, conversation_id)
-    storage.save_frame(frame)
-
-    hypotheses = build_hypotheses(frame, raw_text)
-    runbook_steps = build_runbook_steps(frame, raw_text)
-
-    response = CanonicalResponse(
-        request_id=request_id,
-        timestamp=datetime.now(timezone.utc),
-        hypotheses=hypotheses,
-        runbook_steps=runbook_steps,
-        proposed_fix="Review the top hypothesis and apply targeted mitigation.",
-        risk_notes=["Results are heuristic. Validate in staging before production changes."],
-        rollback=["Revert the change or disable the feature flag if symptoms worsen."],
-        next_checks=["Verify error rate drops within 10 minutes.", "Confirm logs no longer show the signature."],
-        metadata={
-            "parser_version": frame.parser_version,
-            "parse_confidence": frame.parse_confidence,
-            "input_id": input_id,
+    log_event(
+        "triage_request",
+        {
+            "request_id": request_id,
+            "conversation_id": conversation_id,
+            "source": payload.source,
         },
-        conversation_id=conversation_id,
     )
+    input_id = storage.save_input(conversation_id, request_id, raw_text)
+    try:
+        response, _, frame = llm_orchestrator.triage(raw_text, request_id, conversation_id)
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(status_code=502, detail="LLM returned invalid JSON") from exc
+    response.metadata["input_id"] = input_id
     storage.save_response(response)
+    storage.save_frame(frame)
     storage.save_event(conversation_id, request_id, raw_text, frame, response, input_id)
     storage.update_conversation_state(conversation_id, request_id, frame, response)
     return response
@@ -83,56 +79,62 @@ async def triage(payload: TriageRequest, request: Request) -> CanonicalResponse:
 async def explain(payload: ExplainRequest, request: Request) -> CanonicalResponse:
     request_id = payload.request_id or request.state.request_id
     conversation_id = payload.conversation_id or request_id
-
-    if payload.incident_frame:
-        frame = payload.incident_frame
-        raw_text = frame.primary_error_signature or ""
-        hypotheses = build_hypotheses(frame, raw_text)
-    else:
-        hypotheses = [
-            Hypothesis(
-                id="hyp-1",
-                rank=1,
-                confidence=0.4,
-                explanation="No incident frame was provided. Provide logs or a trace to deepen analysis.",
-                citations=[],
-            )
-        ]
-
-    runbook_steps = [
-        RunbookStep(
-            step_number=1,
-            description="Collect recent logs and provide the relevant error snippet.",
-            command_or_console_path="",
-            estimated_time_mins=5,
+    if not payload.incident_frame:
+        return CanonicalResponse(
+            request_id=request_id,
+            timestamp=datetime.now(timezone.utc),
+            hypotheses=[
+                Hypothesis(
+                    id="hyp-1",
+                    rank=1,
+                    confidence=0.3,
+                    explanation="No incident frame was provided. Provide logs or a trace to deepen analysis.",
+                    citations=[],
+                )
+            ],
+            runbook_steps=[
+                RunbookStep(
+                    step_number=1,
+                    description="Collect recent logs and provide the relevant error snippet.",
+                    command_or_console_path="",
+                    estimated_time_mins=5,
+                )
+            ],
+            proposed_fix="Provide additional context and re-run triage.",
+            risk_notes=["Explanation confidence is limited without raw evidence."],
+            rollback=["No action taken."],
+            next_checks=["Attach the failing request id or stack trace."],
+            metadata={"parser_version": "unknown"},
+            conversation_id=conversation_id,
         )
-    ]
 
-    response = CanonicalResponse(
-        request_id=request_id,
-        timestamp=datetime.now(timezone.utc),
-        hypotheses=hypotheses,
-        runbook_steps=runbook_steps,
-        proposed_fix="Provide additional context and re-run triage.",
-        risk_notes=["Explanation confidence is limited without raw evidence."],
-        rollback=["No action taken."],
-        next_checks=["Attach the failing request id or stack trace."],
-        metadata={
-            "parser_version": getattr(payload.incident_frame, "parser_version", "unknown"),
+    log_event(
+        "explain_request",
+        {
+            "request_id": request_id,
+            "conversation_id": conversation_id,
         },
-        conversation_id=conversation_id,
     )
-    if payload.incident_frame:
-        storage.save_response(response)
-        storage.save_event(
-            conversation_id,
+    frame = payload.incident_frame.model_dump()
+    try:
+        response, _ = llm_orchestrator.explain(
+            frame,
+            payload.question,
             request_id,
-            payload.incident_frame.primary_error_signature or "",
-            payload.incident_frame,
-            response,
-            input_id=response.request_id,
+            conversation_id,
         )
-        storage.update_conversation_state(conversation_id, request_id, payload.incident_frame, response)
+    except (ValueError, ValidationError) as exc:
+        raise HTTPException(status_code=502, detail="LLM returned invalid JSON") from exc
+    storage.save_response(response)
+    storage.save_event(
+        conversation_id,
+        request_id,
+        payload.incident_frame.primary_error_signature or "",
+        payload.incident_frame,
+        response,
+        input_id=response.request_id,
+    )
+    storage.update_conversation_state(conversation_id, request_id, payload.incident_frame, response)
     return response
 
 

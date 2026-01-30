@@ -50,6 +50,10 @@ module "ecs_service" {
       CONVERSATION_STATE_TABLE  = var.conversation_state_table_name
       CONVERSATION_TTL_SECONDS  = tostring(var.conversation_ttl_seconds)
       AWS_REGION        = var.region
+      LLM_MODE          = var.llm_mode
+      BEDROCK_MODEL_ID  = var.bedrock_model_id
+      CW_METRICS_ENABLED  = tostring(var.cw_metrics_enabled)
+      CW_METRICS_NAMESPACE = var.cw_metrics_namespace
     },
     var.ecs_env_vars
   )

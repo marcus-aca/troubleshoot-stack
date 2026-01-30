@@ -5,7 +5,7 @@ API_DIR := services/api
 ECR_REPO := $(shell AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) output -raw ecr_repository_url 2>/dev/null)
 AWS_REGION := $(shell AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) output -raw aws_region 2>/dev/null)
 
-.PHONY: push-api login-ecr build-api test-api-parser tf-apply tf-destroy
+.PHONY: push-api login-ecr build-api test-api-parser test-api tf-apply tf-destroy
 
 login-ecr:
 	@if [ -z "$(ECR_REPO)" ]; then echo "ECR repo not found. Run terraform apply in $(TF_DIR)."; exit 1; fi
@@ -36,6 +36,9 @@ push-api:
 
 test-api-parser:
 	python3 -m unittest services/api/tests/test_parser.py
+
+test-api:
+	python3 -m unittest discover services/api/tests
 
 tf-apply:
 	AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) init && AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) apply -auto-approve

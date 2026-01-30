@@ -34,6 +34,12 @@ High-level architecture
   - Tracing spans: bedrock_generate, tool_call.
   - Metrics: LLM latency, error rates, token usage by model.
 
+## Implemented (repo)
+- Structured JSON logs emitted for triage/explain requests and LLM calls (request_id, conversation_id, prompt_version, model_id, token usage, guardrail counts).
+- CloudWatch metrics emission for LLM requests, latency, tokens, errors, and guardrail counters (optional via `CW_METRICS_ENABLED=true`, namespace `CW_METRICS_NAMESPACE`).
+- LLM call timing captured in the Bedrock adapter and surfaced in logs/metrics.
+- JSON parse/validation failures log a sanitized output preview and return HTTP 502 (no retry).
+
 Data flow (per request)
 1. API validates input (Pydantic).
 2. For /triage:

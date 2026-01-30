@@ -41,6 +41,30 @@ variable "ecs_env_vars" {
   default     = {}
 }
 
+variable "llm_mode" {
+  type        = string
+  description = "LLM mode for the API service (bedrock or stub)."
+  default     = "bedrock"
+}
+
+variable "bedrock_model_id" {
+  type        = string
+  description = "Bedrock model id to use for LLM calls."
+  default     = "openai.gpt-oss-20b-1:0"
+}
+
+variable "cw_metrics_enabled" {
+  type        = bool
+  description = "Enable CloudWatch metrics emission from the API service."
+  default     = true
+}
+
+variable "cw_metrics_namespace" {
+  type        = string
+  description = "CloudWatch metrics namespace for LLM observability."
+  default     = "Troubleshooter/LLM"
+}
+
 variable "ecr_repository_name" {
   type        = string
   description = "ECR repository name for the API image."

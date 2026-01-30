@@ -12,6 +12,10 @@ ecr_max_image_count      = 30
 ecr_image_tag_mutability = "MUTABLE"
 ecr_force_delete         = true
 ecs_env_vars             = {}
+bedrock_model_arns = [
+  "arn:aws:bedrock:us-west-2::foundation-model/openai.gpt-oss-20b-1:0"
+]
+bedrock_model_id = "openai.gpt-oss-20b-1:0"
 ecs_cpu                  = 512
 ecs_memory               = 1024
 ecs_port                 = 8080

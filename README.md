@@ -23,3 +23,11 @@ Alternate validator:
 ```bash
 npx openapi-cli validate docs/openapi.json
 ```
+
+## Makefile targets
+- `login-ecr`: Log in to the ECR registry referenced by Terraform outputs (requires `terraform apply` in `infra/terraform`).
+- `build-api`: Build the API Docker image (`troubleshooter-api:latest`).
+- `push-api`: Build and push the API image to ECR, then force a new ECS deployment.
+- `test-api-parser`: Run the API parser unit tests.
+- `tf-apply`: Initialize and apply the Terraform stack in `infra/terraform` using `AWS_PROFILE` (defaults to `pi`).
+- `tf-destroy`: Destroy the Terraform stack in `infra/terraform` using `AWS_PROFILE` (defaults to `pi`).

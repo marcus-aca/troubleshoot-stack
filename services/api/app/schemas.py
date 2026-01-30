@@ -59,6 +59,11 @@ class Hypothesis(BaseModel):
     citations: List[EvidenceMapEntry] = Field(default_factory=list)
 
 
+class ToolCall(BaseModel):
+    tool: str
+    call_spec: dict = Field(default_factory=dict)
+
+
 class RunbookStep(BaseModel):
     step_number: int
     description: str
@@ -83,3 +88,19 @@ class StatusResponse(BaseModel):
     status: str
     dependencies: List[str]
     timestamp: datetime
+
+
+class TriageLLMOutput(BaseModel):
+    category: str
+    hypotheses: List[Hypothesis]
+    runbook_steps: List[RunbookStep] = Field(default_factory=list)
+    recommended_tool_calls: List[ToolCall] = Field(default_factory=list)
+
+
+class ExplainLLMOutput(BaseModel):
+    hypotheses: List[Hypothesis]
+    runbook_steps: List[RunbookStep] = Field(default_factory=list)
+    proposed_fix: Optional[str] = None
+    risk_notes: List[str] = Field(default_factory=list)
+    rollback: List[str] = Field(default_factory=list)
+    next_checks: List[str] = Field(default_factory=list)

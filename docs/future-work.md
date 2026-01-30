@@ -20,3 +20,12 @@
 5) **LLM-assisted classification (bounded)**
 - Use a small prompt to classify error types from parsed structure (not raw logs).
 - Keep it low-token and fall back to rules when confidence is low.
+
+## Guardrail expansion
+1) **Claim-level validation**
+- Validate LLM claims against raw log snippets and tool outputs, not just citations.
+- Require citation coverage per concrete assertion (error codes, resource names, regions).
+
+2) **Stronger citation enforcement**
+- Enforce minimum evidence coverage for top hypotheses before returning.
+- Flag hypotheses with weak evidence for manual review.

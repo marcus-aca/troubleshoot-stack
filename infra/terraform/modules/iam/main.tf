@@ -59,10 +59,21 @@ locals {
     }
   ]
 
+  cloudwatch_metrics_statement = [
+    {
+      Effect = "Allow"
+      Action = [
+        "cloudwatch:PutMetricData"
+      ]
+      Resource = "*"
+    }
+  ]
+
   task_policy_statements = concat(
     local.dynamodb_policy_statement,
     local.s3_policy_statement,
-    local.bedrock_policy_statement
+    local.bedrock_policy_statement,
+    local.cloudwatch_metrics_statement
   )
 
   task_policy_document = jsonencode({
