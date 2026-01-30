@@ -135,6 +135,13 @@ resource "aws_ecs_task_definition" "this" {
           value = value
         }
       ]
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:${var.port}/status')\""]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 10
+      }
       secrets = [
         for arn in var.env_vars_secret_arns : {
           name      = basename(arn)

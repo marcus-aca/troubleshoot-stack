@@ -34,6 +34,16 @@ output "ecs_alb_dns_name" {
   value       = module.ecs_service.alb_dns_name
 }
 
+output "ecs_cluster_name" {
+  description = "ECS cluster name."
+  value       = var.ecs_cluster_name
+}
+
+output "ecs_service_name" {
+  description = "ECS service name."
+  value       = "${var.ecs_cluster_name}-service"
+}
+
 output "ecs_task_role_arn" {
   description = "ECS task role ARN."
   value       = module.iam.ecs_task_role_arn
@@ -67,6 +77,16 @@ output "sessions_table_name" {
 output "inputs_table_name" {
   description = "DynamoDB inputs table name."
   value       = module.inputs_table.name
+}
+
+output "conversation_events_table_name" {
+  description = "DynamoDB conversation events table name."
+  value       = module.conversation_events_table.name
+}
+
+output "conversation_state_table_name" {
+  description = "DynamoDB conversation state table name."
+  value       = module.conversation_state_table.name
 }
 
 output "observability_dashboard_url" {

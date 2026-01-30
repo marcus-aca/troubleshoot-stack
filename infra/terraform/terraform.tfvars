@@ -38,6 +38,9 @@ api_custom_domain_base_path       = ""
 
 session_table_name = "troubleshooter-sessions"
 inputs_table_name  = "troubleshooter-inputs"
+conversation_events_table_name = "troubleshooter-conversation-events"
+conversation_state_table_name  = "troubleshooter-conversation-state"
+conversation_ttl_seconds       = 604800
 budget_table_name  = "troubleshooter-budgets"
 
 uploads_bucket_name   = "troubleshooter-uploads"

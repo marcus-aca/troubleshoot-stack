@@ -8,6 +8,9 @@
 ## Parsing (MVP)
 Rule-first parser with explicit log family matching (Terraform, CloudWatch, Python tracebacks) and a generic fallback.
 
+## Storage (MVP)
+Conversation context, incident frames, and canonical responses are stored in DynamoDB (inputs + conversation events/state). See `docs/storage.md`.
+
 ## OpenAPI validation
 From the repo root:
 

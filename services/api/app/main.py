@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 from uuid import uuid4
 
@@ -37,14 +37,14 @@ async def status() -> StatusResponse:
     return StatusResponse(
         status="ok",
         dependencies=["parser", "storage"],
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
     )
 
 
 @app.post("/triage", response_model=CanonicalResponse)
 async def triage(payload: TriageRequest, request: Request) -> CanonicalResponse:
     request_id = payload.request_id or request.state.request_id
-    conversation_id = payload.conversation_id
+    conversation_id = payload.conversation_id or request_id
     raw_text = payload.raw_text.strip()
 
     if not raw_text:
@@ -59,7 +59,7 @@ async def triage(payload: TriageRequest, request: Request) -> CanonicalResponse:
 
     response = CanonicalResponse(
         request_id=request_id,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         hypotheses=hypotheses,
         runbook_steps=runbook_steps,
         proposed_fix="Review the top hypothesis and apply targeted mitigation.",
@@ -73,13 +73,16 @@ async def triage(payload: TriageRequest, request: Request) -> CanonicalResponse:
         },
         conversation_id=conversation_id,
     )
+    storage.save_response(response)
+    storage.save_event(conversation_id, request_id, raw_text, frame, response, input_id)
+    storage.update_conversation_state(conversation_id, request_id, frame, response)
     return response
 
 
 @app.post("/explain", response_model=CanonicalResponse)
 async def explain(payload: ExplainRequest, request: Request) -> CanonicalResponse:
     request_id = payload.request_id or request.state.request_id
-    conversation_id = payload.conversation_id
+    conversation_id = payload.conversation_id or request_id
 
     if payload.incident_frame:
         frame = payload.incident_frame
@@ -107,7 +110,7 @@ async def explain(payload: ExplainRequest, request: Request) -> CanonicalRespons
 
     response = CanonicalResponse(
         request_id=request_id,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         hypotheses=hypotheses,
         runbook_steps=runbook_steps,
         proposed_fix="Provide additional context and re-run triage.",
@@ -119,6 +122,17 @@ async def explain(payload: ExplainRequest, request: Request) -> CanonicalRespons
         },
         conversation_id=conversation_id,
     )
+    if payload.incident_frame:
+        storage.save_response(response)
+        storage.save_event(
+            conversation_id,
+            request_id,
+            payload.incident_frame.primary_error_signature or "",
+            payload.incident_frame,
+            response,
+            input_id=response.request_id,
+        )
+        storage.update_conversation_state(conversation_id, request_id, payload.incident_frame, response)
     return response
 
 
@@ -136,7 +150,7 @@ def build_hypotheses(frame, raw_text: str) -> List[Hypothesis]:
                 citations=evidence,
             )
         ]
-    if "permission" in lowered or "access denied" in lowered:
+    if "permission" in lowered or "access denied" in lowered or "accessdenied" in lowered:
         return [
             Hypothesis(
                 id="hyp-permissions",

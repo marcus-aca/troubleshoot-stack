@@ -195,6 +195,24 @@ variable "inputs_table_name" {
   default     = "troubleshooter-inputs"
 }
 
+variable "conversation_events_table_name" {
+  type        = string
+  description = "DynamoDB table name for conversation events."
+  default     = "troubleshooter-conversation-events"
+}
+
+variable "conversation_state_table_name" {
+  type        = string
+  description = "DynamoDB table name for conversation state."
+  default     = "troubleshooter-conversation-state"
+}
+
+variable "conversation_ttl_seconds" {
+  type        = number
+  description = "TTL in seconds for conversation events/state."
+  default     = 604800
+}
+
 variable "budget_table_name" {
   type        = string
   description = "DynamoDB table name for budgets."

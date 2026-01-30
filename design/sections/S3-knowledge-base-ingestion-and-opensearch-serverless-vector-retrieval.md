@@ -2,6 +2,7 @@
 Log parsing and normalization (non-RAG)
 
 ## Summary
+Note: OpenSearch Serverless is not used in the MVP parser flow. This section focuses on rule-first log parsing and evidence extraction.
 Build a reliable parser that turns pasted logs/trace stacks into a structured debug frame used by triage and explanation. This replaces knowledge-base ingestion and vector retrieval for the MVP. The system stays grounded in user-provided evidence plus optional tool outputs and aligns with S1 adapters and canonical response expectations.
 
 ## Design
@@ -40,8 +41,13 @@ API integration
 - /explain receives the incident frame, selected hypotheses, and cited evidence.
 
 Storage and citation map
-- Store raw input with line numbers in DynamoDB (session key + TTL) so citations can reference stable line ranges.
+- Store raw input with line numbers in DynamoDB (inputs table + TTL) so citations can reference stable line ranges.
 - Evidence map links to log line ranges and tool output ids for traceability in responses.
+- Persist incident frames and canonical responses in a **conversation events** table (PK `conversation_id`, SK `event_id`) so multi-turn context can be reconstructed deterministically.
+- Maintain a **conversation state** table with the latest incident frame + response summary for quick LLM context assembly.
+- On each turn:
+  - Write raw input + incident frame + canonical response to the events table.
+  - Update the state table with the latest incident frame + response summary.
 
 Incident frame schema (draft)
 - root: {frame_id, conversation_id, request_id, source, parser_version, parse_confidence, created_at}
@@ -60,6 +66,7 @@ Phase 2 — Core parsing and evidence (2–4 days)
 - Add platform-specific parsers (Terraform, EKS, ALB, IAM, EC2, CloudWatch).
 - Implement evidence map generation for citations and tool outputs.
 - Return minimal schema-valid frame on parse failure with parse_confidence < 0.3.
+- Persist parser outputs into conversation events/state so downstream LLM calls can aggregate across turns.
 
 Phase 3 — Tests and fixtures (2–3 days)
 - Add parser unit tests with fixture logs.

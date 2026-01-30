@@ -46,6 +46,9 @@ module "ecs_service" {
       SESSION_TABLE     = var.session_table_name
       INPUTS_TABLE      = var.inputs_table_name
       INPUT_TTL_SECONDS = "86400"
+      CONVERSATION_EVENTS_TABLE = var.conversation_events_table_name
+      CONVERSATION_STATE_TABLE  = var.conversation_state_table_name
+      CONVERSATION_TTL_SECONDS  = tostring(var.conversation_ttl_seconds)
       AWS_REGION        = var.region
     },
     var.ecs_env_vars
@@ -65,7 +68,9 @@ module "iam" {
   ecs_execution_role_name = var.ecs_execution_role_name
   dynamodb_table_arns = [
     module.sessions_table.table_arn,
-    module.inputs_table.table_arn
+    module.inputs_table.table_arn,
+    module.conversation_events_table.table_arn,
+    module.conversation_state_table.table_arn
   ]
   s3_bucket_arns = [
     module.outputs_bucket.bucket_arn,
@@ -88,6 +93,24 @@ module "inputs_table" {
 
   table_name   = var.inputs_table_name
   hash_key     = "input_id"
+  range_key    = null
+  billing_mode = "PAY_PER_REQUEST"
+}
+
+module "conversation_events_table" {
+  source = "./modules/dynamodb"
+
+  table_name   = var.conversation_events_table_name
+  hash_key     = "conversation_id"
+  range_key    = "event_id"
+  billing_mode = "PAY_PER_REQUEST"
+}
+
+module "conversation_state_table" {
+  source = "./modules/dynamodb"
+
+  table_name   = var.conversation_state_table_name
+  hash_key     = "conversation_id"
   range_key    = null
   billing_mode = "PAY_PER_REQUEST"
 }

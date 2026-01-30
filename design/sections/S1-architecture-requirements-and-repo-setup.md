@@ -29,7 +29,9 @@ High-level architecture
 - Data flow (request -> response):
   - Request arrives with error logs/trace stack -> auth -> request-id assigned if missing -> input validated -> conversation context loaded -> log parsing + triage pipeline invoked -> optional tool calls -> model scoring -> canonical response assembled -> response returned with request-id and trace headers -> logs emitted. Updated context stored for next turn.
 - Evidence storage:
-  - Store raw user inputs keyed by session UUID in DynamoDB with a short TTL. Store parsed incident frames as derived artifacts in the same table or a sibling table to support citations back to log lines and tool outputs.
+  - **Inputs table** (DynamoDB, TTL): raw user inputs keyed by `input_id` for deterministic citations. Also store derived artifacts as separate items when needed.
+  - **Conversation events table** (DynamoDB, TTL): per-turn record keyed by `conversation_id` + `event_id` storing raw input, incident frame, and canonical response.
+  - **Conversation state table** (DynamoDB, TTL): latest incident frame + response summary for fast context assembly.
 - Caching:
   - Semantic cache of sanitized input stored in OpenSearch Serverless (vector index). Cache adapter uses embeddings of sanitized input + prompt version to retrieve semantically similar prior responses with TTL metadata.
 
@@ -38,6 +40,7 @@ Canonical API contracts (high level)
 - /explain: given a hypothesis id, trace, or follow-up question with prior context, return an explanation with citations and confidence.
 - /status: health and readiness for service + dependency checks.
 - Context handling: include `conversation_id` in requests to maintain multi-turn troubleshooting state (stored server-side or via signed context token).
+  - If `conversation_id` is missing, the backend should generate one (default to request_id for MVP) and return it so the next turn can be linked.
 
 Canonical response schema (full definition in Deliverables; see Implementation Steps for required keys)
 - Root fields include `request_id`, `timestamp`, `hypotheses[]`, `runbook_steps[]`, `proposed_fix`, `risk_notes`, `rollback`, `next_checks`, `metadata`.
@@ -83,6 +86,10 @@ Phase 2 — Core service plumbing (3–7 days)
   - ParserAdapter: parse(raw_log) -> incident_frame
   - CacheAdapter: semantic get/set with vector similarity + TTL metadata
 - Add placeholder implementations for adapters (local stub) and wiring for later replacement with real LLM and tool integrations.
+- Add conversation storage:
+  - Conversation events table (PK `conversation_id`, SK `event_id`) storing raw input, incident frame, and canonical response.
+  - Conversation state table (PK `conversation_id`) storing latest incident frame + response summary for fast LLM context building.
+  - Store canonical responses per turn and update the conversation state on both `/triage` and `/explain`.
 
 Phase 3 — Schema-driven responses & examples (2–4 days)
 - Implement canonical response builder that enforces schema and includes:
