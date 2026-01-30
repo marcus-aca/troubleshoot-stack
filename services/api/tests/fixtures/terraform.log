@@ -1,0 +1,6 @@
+2026-01-30T11:23:45Z Error: Error creating IAM Role example-role: AccessDenied: User is not authorized
+
+  on iam.tf line 12, in resource "aws_iam_role" "example":
+  12: resource "aws_iam_role" "example" {
+
+terraform apply failed with exit code 1

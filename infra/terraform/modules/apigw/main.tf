@@ -15,16 +15,8 @@ locals {
 
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
-data "aws_cloudwatch_log_groups" "existing" {
-  log_group_name_prefix = local.access_log_group_name
-}
-
-locals {
-  apigw_log_group_exists = contains(data.aws_cloudwatch_log_groups.existing.log_group_names, local.access_log_group_name)
-}
-
 resource "aws_cloudwatch_log_group" "access_logs" {
-  count             = var.manage_log_group && !local.apigw_log_group_exists ? 1 : 0
+  count             = var.manage_log_group ? 1 : 0
   name              = local.access_log_group_name
   retention_in_days = var.log_retention_in_days
 }

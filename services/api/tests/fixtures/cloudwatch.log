@@ -1,0 +1,3 @@
+2026-01-30 11:24:00Z CloudWatch Logs: log group /aws/ecs/api log stream ecs/api/123
+2026-01-30 11:24:01Z ERROR Failed to deliver logs to destination
+2026-01-30 11:24:02Z EventId: 1a2b3c

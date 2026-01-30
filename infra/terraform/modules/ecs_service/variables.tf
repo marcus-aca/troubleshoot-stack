@@ -67,6 +67,12 @@ variable "env_vars_secret_arns" {
   default     = []
 }
 
+variable "env_vars" {
+  type        = map(string)
+  description = "Plaintext environment variables to inject into the task."
+  default     = {}
+}
+
 variable "task_role_arn" {
   type        = string
   description = "IAM task role ARN."

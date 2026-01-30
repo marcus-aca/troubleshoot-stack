@@ -35,6 +35,36 @@ variable "ecs_cluster_name" {
   default     = "troubleshooter"
 }
 
+variable "ecs_env_vars" {
+  type        = map(string)
+  description = "Plaintext environment variables for the ECS task."
+  default     = {}
+}
+
+variable "ecr_repository_name" {
+  type        = string
+  description = "ECR repository name for the API image."
+  default     = "troubleshooter-api"
+}
+
+variable "ecr_max_image_count" {
+  type        = number
+  description = "Max number of images to retain in the ECR repository."
+  default     = 30
+}
+
+variable "ecr_image_tag_mutability" {
+  type        = string
+  description = "ECR image tag mutability (MUTABLE or IMMUTABLE)."
+  default     = "MUTABLE"
+}
+
+variable "ecr_force_delete" {
+  type        = bool
+  description = "Force delete ECR repository (deletes images)."
+  default     = false
+}
+
 variable "ecs_container_image" {
   type        = string
   description = "Container image URI for the API service."

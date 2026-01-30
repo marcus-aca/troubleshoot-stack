@@ -3,16 +3,7 @@ locals {
 }
 
 data "aws_region" "current" {}
-data "aws_cloudwatch_log_groups" "existing" {
-  log_group_name_prefix = local.log_group_name
-}
-
-locals {
-  log_group_exists = contains(data.aws_cloudwatch_log_groups.existing.log_group_names, local.log_group_name)
-}
-
 resource "aws_cloudwatch_log_group" "service" {
-  count             = local.log_group_exists ? 0 : 1
   name              = local.log_group_name
   retention_in_days = var.log_retention_in_days
 }
@@ -88,6 +79,15 @@ resource "aws_lb_target_group" "this" {
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = var.vpc_id
+
+  health_check {
+    path                = "/status"
+    matcher             = "200"
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    interval            = 30
+  }
 }
 
 resource "aws_lb_listener" "http" {
@@ -129,6 +129,12 @@ resource "aws_ecs_task_definition" "this" {
           awslogs-stream-prefix = "api"
         }
       }
+      environment = [
+        for key, value in var.env_vars : {
+          name  = key
+          value = value
+        }
+      ]
       secrets = [
         for arn in var.env_vars_secret_arns : {
           name      = basename(arn)

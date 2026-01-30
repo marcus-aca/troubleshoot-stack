@@ -3,6 +3,11 @@ output "apigw_invoke_url" {
   value       = module.apigw.invoke_url
 }
 
+output "aws_region" {
+  description = "AWS region for the stack."
+  value       = var.region
+}
+
 output "apigw_api_keys" {
   description = "API Gateway API keys."
   value       = module.apigw.api_keys
@@ -37,6 +42,11 @@ output "ecs_task_role_arn" {
 output "ecs_execution_role_arn" {
   description = "ECS execution role ARN."
   value       = module.iam.ecs_execution_role_arn
+}
+
+output "ecr_repository_url" {
+  description = "ECR repository URL for the API image."
+  value       = module.ecr.repository_url
 }
 
 output "outputs_bucket_name" {

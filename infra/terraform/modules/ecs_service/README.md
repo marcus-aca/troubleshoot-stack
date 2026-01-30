@@ -25,4 +25,5 @@ Creates an ECS Fargate service with optional load balancer.
 - `nlb_dns_name`
 
 ## Notes
-This module is currently a scaffold; wire resources in later steps.
+- ALB target group health checks use `GET /status` and expect HTTP 200.
+- This module is currently a scaffold; wire resources in later steps.

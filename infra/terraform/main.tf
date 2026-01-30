@@ -15,6 +15,15 @@ module "vpc" {
   private_subnet_cidrs = var.private_subnet_cidrs
 }
 
+module "ecr" {
+  source = "./modules/ecr"
+
+  repository_name      = var.ecr_repository_name
+  max_image_count      = var.ecr_max_image_count
+  image_tag_mutability = var.ecr_image_tag_mutability
+  force_delete         = var.ecr_force_delete
+}
+
 module "ecs_service" {
   source = "./modules/ecs_service"
 
@@ -31,11 +40,21 @@ module "ecs_service" {
   max_capacity         = var.ecs_max_capacity
   cpu_target_value     = var.ecs_cpu_target_value
   env_vars_secret_arns = []
-  task_role_arn        = module.iam.ecs_task_role_arn
-  execution_role_arn   = module.iam.ecs_execution_role_arn
-  alb_enabled          = true
-  alb_listener_port    = var.ecs_alb_listener_port
-  log_group_name       = local.ecs_log_group_name
+  env_vars = merge(
+    {
+      USE_DYNAMODB      = "true"
+      SESSION_TABLE     = var.session_table_name
+      INPUTS_TABLE      = var.inputs_table_name
+      INPUT_TTL_SECONDS = "86400"
+      AWS_REGION        = var.region
+    },
+    var.ecs_env_vars
+  )
+  task_role_arn         = module.iam.ecs_task_role_arn
+  execution_role_arn    = module.iam.ecs_execution_role_arn
+  alb_enabled           = true
+  alb_listener_port     = var.ecs_alb_listener_port
+  log_group_name        = local.ecs_log_group_name
   log_retention_in_days = var.observability_log_retention_in_days
 }
 
