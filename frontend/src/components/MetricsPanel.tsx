@@ -1,12 +1,5 @@
 import type { CanonicalResponse, StatusResponse } from "../api/types";
 
-const formatTimestamp = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-};
-
 const toNumber = (value: unknown) => {
   if (typeof value === "number") return value;
   if (typeof value === "string" && value.trim() !== "") {
@@ -19,21 +12,47 @@ const toNumber = (value: unknown) => {
 export type MetricsPanelProps = {
   status: StatusResponse | null;
   lastResponse: CanonicalResponse | null;
+  lastLatencyMs: number | null;
+  requestId: string | null;
 };
 
-export default function MetricsPanel({ status, lastResponse }: MetricsPanelProps) {
+const formatNumber = (value: number | null, suffix = "") => {
+  if (value === null || Number.isNaN(value)) return "-";
+  return `${value}${suffix}`;
+};
+
+const getTokenUsage = (metadata: Record<string, unknown>) => {
+  const direct =
+    toNumber(metadata.total_tokens) ??
+    toNumber(metadata.token_usage_total) ??
+    toNumber(metadata.tokens_total);
+  if (direct !== null) return direct;
+  const usage = metadata.usage as { total_tokens?: number } | undefined;
+  return usage?.total_tokens !== undefined ? toNumber(usage.total_tokens) : null;
+};
+
+const getCacheHitRate = (metadata: Record<string, unknown>) => {
+  const raw = toNumber(metadata.cache_hit_rate);
+  if (raw === null) return null;
+  if (raw <= 1) return Math.round(raw * 1000) / 10;
+  return Math.round(raw * 10) / 10;
+};
+
+export default function MetricsPanel({
+  status,
+  lastResponse,
+  lastLatencyMs,
+  requestId
+}: MetricsPanelProps) {
   const metadata = lastResponse?.metadata ?? {};
-  const latency = toNumber((metadata as Record<string, unknown>).latency_ms);
-  const cacheHit = (metadata as Record<string, unknown>).cache_hit === true;
-  const guardrails = (metadata as Record<string, unknown>).guardrails as
-    | { citation_missing_count?: number; redactions?: number; issues?: string[] }
-    | undefined;
+  const latency = toNumber(metadata.latency_ms) ?? lastLatencyMs;
+  const cacheHitRate = getCacheHitRate(metadata);
+  const tokenUsage = getTokenUsage(metadata);
 
   return (
     <aside className="panel metrics">
       <div className="panel-header">
-        <h2>Metrics</h2>
-        <p className="muted">Live snapshot</p>
+        <h2>Live stats</h2>
       </div>
 
       <div className="metric-grid">
@@ -44,32 +63,20 @@ export default function MetricsPanel({ status, lastResponse }: MetricsPanelProps
           </span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Dependencies</span>
-          <span className="metric-value">
-            {status?.dependencies?.length ? status.dependencies.join(", ") : "-"}
-          </span>
+          <span className="metric-label">Cache hit rate</span>
+          <span className="metric-value">{formatNumber(cacheHitRate, "%")}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Last response</span>
-          <span className="metric-value">{formatTimestamp(lastResponse?.timestamp)}</span>
+          <span className="metric-label">Total tokens</span>
+          <span className="metric-value">{formatNumber(tokenUsage)}</span>
         </div>
         <div className="metric-card">
           <span className="metric-label">Latency (ms)</span>
-          <span className="metric-value">{latency ?? "-"}</span>
+          <span className="metric-value">{formatNumber(latency)}</span>
         </div>
         <div className="metric-card">
-          <span className="metric-label">Cache hit</span>
-          <span className={`metric-value ${cacheHit ? "ok" : "muted"}`}>
-            {cacheHit ? "true" : "false"}
-          </span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Guardrails</span>
-          <span className="metric-value">
-            {guardrails
-              ? `missing citations: ${guardrails.citation_missing_count ?? 0}, redactions: ${guardrails.redactions ?? 0}`
-              : "-"}
-          </span>
+          <span className="metric-label">Request ID</span>
+          <span className="metric-value mono">{requestId ?? "-"}</span>
         </div>
       </div>
     </aside>
