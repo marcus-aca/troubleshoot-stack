@@ -8,13 +8,11 @@ from ..schemas import (
     CanonicalResponse,
     EvidenceMapEntry,
     ExplainLLMOutput,
-    Hypothesis,
-    RunbookStep,
     TriageLLMOutput,
 )
 from ..storage import StorageAdapter, build_llm_context
 from .bedrock import BedrockAdapter
-from .guardrails import GuardrailReport, enforce_guardrails
+from .guardrails import GuardrailReport, citation_signature, enforce_guardrails
 from .json_utils import extract_json, sanitize_llm_output
 from .prompt_registry import PromptRegistry
 from ..observability import CloudWatchMetrics, log_event, start_timer, stop_timer
@@ -27,12 +25,14 @@ class LLMOrchestrator:
         parser: ParserAdapter,
         prompt_registry: Optional[PromptRegistry] = None,
         llm_adapter: Optional[BedrockAdapter] = None,
+        rolling_llm_latency: Optional[object] = None,
     ) -> None:
         self.storage = storage
         self.parser = parser
         self.prompt_registry = prompt_registry or PromptRegistry()
         self.llm = llm_adapter or BedrockAdapter()
         self.metrics = CloudWatchMetrics()
+        self.rolling_llm_latency = rolling_llm_latency
 
     def triage(
         self,
@@ -47,6 +47,7 @@ class LLMOrchestrator:
         try:
             result = self.llm.generate(prompt, request_id=request_id)
             payload = extract_json(result.text)
+            payload = _normalize_llm_payload(payload, frame.evidence_map)
             llm_output = TriageLLMOutput.model_validate(payload)
         except Exception as exc:
             latency_ms = stop_timer(timer)
@@ -65,6 +66,7 @@ class LLMOrchestrator:
                     "conversation_id": conversation_id,
                     "error": str(exc),
                     "llm_output_preview": sanitize_llm_output(result.text if "result" in locals() else ""),
+                    "llm_output": result.text if "result" in locals() else "",
                 },
             )
             raise
@@ -73,15 +75,20 @@ class LLMOrchestrator:
             llm_output.hypotheses, allowed_citations=frame.evidence_map
         )
 
+        tool_calls = llm_output.tool_calls[:1]
+        next_question = llm_output.next_question if not tool_calls else None
+        completion_state = llm_output.completion_state
+        if tool_calls and completion_state == "final":
+            completion_state = "needs_input"
         response = CanonicalResponse(
             request_id=request_id,
             timestamp=datetime.now(timezone.utc),
+            assistant_message=llm_output.assistant_message,
+            completion_state=completion_state,
+            next_question=next_question,
+            tool_calls=tool_calls,
             hypotheses=hypotheses,
-            runbook_steps=llm_output.runbook_steps or _default_triage_runbook(frame.evidence_map),
-            proposed_fix="Review the top hypothesis and apply targeted mitigation.",
-            risk_notes=["LLM output is advisory; validate before production changes."],
-            rollback=["Revert the change or disable the feature flag if symptoms worsen."],
-            next_checks=["Verify error rate drops within 10 minutes.", "Confirm logs no longer show the signature."],
+            fix_steps=llm_output.fix_steps,
             metadata={
                 "parser_version": frame.parser_version,
                 "parse_confidence": frame.parse_confidence,
@@ -91,11 +98,13 @@ class LLMOrchestrator:
                 "token_usage": result.token_usage,
                 "guardrails": report.__dict__,
                 "category": llm_output.category,
-                "recommended_tool_calls": [call.model_dump() for call in llm_output.recommended_tool_calls],
             },
             conversation_id=conversation_id,
         )
         latency_ms = stop_timer(timer)
+        rolling_llm_latency = getattr(self, "rolling_llm_latency", None)
+        if rolling_llm_latency:
+            rolling_llm_latency.add(latency_ms)
         self._record_metrics(
             endpoint="triage",
             model_id=result.model_id,
@@ -114,6 +123,11 @@ class LLMOrchestrator:
                 "model_id": result.model_id,
                 "token_usage": result.token_usage,
                 "guardrails": report.__dict__,
+                "completion_state": response.completion_state,
+                "next_question": llm_output.next_question,
+                "question_plan": [llm_output.next_question] if llm_output.next_question else [],
+                "tool_call_plan": [call.model_dump() for call in llm_output.tool_calls],
+                "tool_calls": [call.model_dump() for call in tool_calls],
             },
         )
         return response, report, frame
@@ -121,16 +135,17 @@ class LLMOrchestrator:
     def explain(
         self,
         frame: Optional[dict],
-        question: str,
+        response: str,
         request_id: str,
         conversation_id: str,
     ) -> Tuple[CanonicalResponse, GuardrailReport]:
         prompt_meta = self.prompt_registry.get_prompt("explain")
-        prompt = self._build_prompt("explain", frame or {}, question, conversation_id)
+        prompt = self._build_prompt("explain", frame or {}, response, conversation_id)
         timer = start_timer()
         try:
             result = self.llm.generate(prompt, request_id=request_id)
             payload = extract_json(result.text)
+            payload = _normalize_llm_payload(payload, (frame or {}).get("evidence_map", []))
             llm_output = ExplainLLMOutput.model_validate(payload)
         except Exception as exc:
             latency_ms = stop_timer(timer)
@@ -149,6 +164,7 @@ class LLMOrchestrator:
                     "conversation_id": conversation_id,
                     "error": str(exc),
                     "llm_output_preview": sanitize_llm_output(result.text if "result" in locals() else ""),
+                    "llm_output": result.text if "result" in locals() else "",
                 },
             )
             raise
@@ -159,15 +175,20 @@ class LLMOrchestrator:
 
         hypotheses, report = enforce_guardrails(llm_output.hypotheses, allowed_citations=evidence)
 
+        tool_calls = llm_output.tool_calls[:1]
+        next_question = llm_output.next_question if not tool_calls else None
+        completion_state = llm_output.completion_state
+        if tool_calls and completion_state == "final":
+            completion_state = "needs_input"
         response = CanonicalResponse(
             request_id=request_id,
             timestamp=datetime.now(timezone.utc),
+            assistant_message=llm_output.assistant_message,
+            completion_state=completion_state,
+            next_question=next_question,
+            tool_calls=tool_calls,
             hypotheses=hypotheses,
-            runbook_steps=llm_output.runbook_steps or _default_explain_runbook(),
-            proposed_fix=llm_output.proposed_fix,
-            risk_notes=llm_output.risk_notes,
-            rollback=llm_output.rollback,
-            next_checks=llm_output.next_checks,
+            fix_steps=llm_output.fix_steps,
             metadata={
                 "prompt_version": prompt_meta.metadata.get("prompt_version"),
                 "prompt_filename": prompt_meta.filename,
@@ -178,6 +199,9 @@ class LLMOrchestrator:
             conversation_id=conversation_id,
         )
         latency_ms = stop_timer(timer)
+        rolling_llm_latency = getattr(self, "rolling_llm_latency", None)
+        if rolling_llm_latency:
+            rolling_llm_latency.add(latency_ms)
         self._record_metrics(
             endpoint="explain",
             model_id=result.model_id,
@@ -209,12 +233,15 @@ class LLMOrchestrator:
     ) -> str:
         prompt = self.prompt_registry.get_prompt(endpoint)
         context = build_llm_context(self.storage, conversation_id, limit=5)
+        latest_summary = context.get("latest_response_summary") or {}
         return (
             f"{prompt.text}\n\n"
             f"Conversation ID: {conversation_id}\n"
-            f"Question or raw input: {input_text}\n"
+            f"User input: {input_text}\n"
             f"Incident frame: {frame}\n"
             f"Conversation context: {context.get('recent_events', [])}\n"
+            f"Recent user inputs: {context.get('recent_messages', [])}\n"
+            f"Latest response summary: {latest_summary}\n"
             f"Evidence map: {frame.get('evidence_map', [])}\n"
             "Return ONLY valid JSON."
         )
@@ -240,29 +267,120 @@ class LLMOrchestrator:
         )
 
 
-def _default_triage_runbook(evidence: list[EvidenceMapEntry]) -> list[RunbookStep]:
-    return [
-        RunbookStep(
-            step_number=1,
-            description="Confirm the error signature in the raw logs.",
-            command_or_console_path="CloudWatch Logs or log viewer",
-            estimated_time_mins=5,
-        ),
-        RunbookStep(
-            step_number=2,
-            description="Identify recent deploys or config changes.",
-            command_or_console_path="CI/CD dashboard",
-            estimated_time_mins=10,
-        ),
-    ]
+
+def _normalize_llm_payload(payload: dict, evidence_map: list[object]) -> dict:
+    if not isinstance(payload, dict):
+        return payload
+
+    hypotheses = payload.get("hypotheses")
+    if not isinstance(hypotheses, list):
+        return payload
+
+    allowed_entries = _normalize_evidence_entries(evidence_map)
+    if not allowed_entries:
+        for hypothesis in hypotheses:
+            if isinstance(hypothesis, dict):
+                hypothesis["citations"] = []
+        return payload
+
+    allowed_by_signature = {}
+    allowed_by_hash = {}
+    allowed_by_excerpt = {}
+    allowed_by_lines = {}
+    for entry in allowed_entries:
+        signature = citation_signature(entry)
+        allowed_by_signature[signature] = entry
+        if entry.excerpt_hash:
+            allowed_by_hash[entry.excerpt_hash] = entry
+        if entry.excerpt:
+            allowed_by_excerpt[entry.excerpt.strip()] = entry
+        allowed_by_lines[(entry.source_type, entry.source_id, entry.line_start, entry.line_end)] = entry
+
+    required_keys = {"source_type", "source_id", "line_start", "line_end", "excerpt_hash"}
+    for hypothesis in hypotheses:
+        if not isinstance(hypothesis, dict):
+            continue
+        citations = hypothesis.get("citations", [])
+        if not isinstance(citations, list):
+            hypothesis["citations"] = []
+            continue
+        normalized: list[dict] = []
+        for citation in citations:
+            if isinstance(citation, EvidenceMapEntry):
+                normalized.append(citation.model_dump())
+                continue
+            if not isinstance(citation, dict):
+                continue
+            if required_keys.issubset(citation.keys()):
+                normalized.append(citation)
+                continue
+
+            matched = _match_citation(
+                citation,
+                allowed_by_signature=allowed_by_signature,
+                allowed_by_hash=allowed_by_hash,
+                allowed_by_excerpt=allowed_by_excerpt,
+                allowed_by_lines=allowed_by_lines,
+                allowed_entries=allowed_entries,
+            )
+            if matched:
+                normalized.append(matched.model_dump())
+        hypothesis["citations"] = normalized
+
+    return payload
 
 
-def _default_explain_runbook() -> list[RunbookStep]:
-    return [
-        RunbookStep(
-            step_number=1,
-            description="Collect additional logs or traces that capture the failure.",
-            command_or_console_path="Log viewer or APM",
-            estimated_time_mins=10,
-        )
-    ]
+def _normalize_evidence_entries(evidence_map: list[object]) -> list[EvidenceMapEntry]:
+    normalized: list[EvidenceMapEntry] = []
+    for entry in evidence_map:
+        if isinstance(entry, EvidenceMapEntry):
+            normalized.append(entry)
+            continue
+        try:
+            normalized.append(EvidenceMapEntry.model_validate(entry))
+        except Exception:
+            continue
+    return normalized
+
+
+def _match_citation(
+    citation: dict,
+    *,
+    allowed_by_signature: dict[str, EvidenceMapEntry],
+    allowed_by_hash: dict[str, EvidenceMapEntry],
+    allowed_by_excerpt: dict[str, EvidenceMapEntry],
+    allowed_by_lines: dict[tuple[str, str, int, int], EvidenceMapEntry],
+    allowed_entries: list[EvidenceMapEntry],
+) -> EvidenceMapEntry | None:
+    entry_id = citation.get("evidence_map_entry_id")
+    if entry_id is not None:
+        key = str(entry_id)
+        if key in allowed_by_signature:
+            return allowed_by_signature[key]
+        if key in allowed_by_hash:
+            return allowed_by_hash[key]
+        if key.isdigit():
+            idx = int(key)
+            if 0 <= idx < len(allowed_entries):
+                return allowed_entries[idx]
+
+    excerpt_hash = citation.get("excerpt_hash")
+    if excerpt_hash in allowed_by_hash:
+        return allowed_by_hash[excerpt_hash]
+
+    excerpt = citation.get("excerpt")
+    if isinstance(excerpt, str):
+        matched = allowed_by_excerpt.get(excerpt.strip())
+        if matched:
+            return matched
+
+    line_start = citation.get("line_start")
+    line_end = citation.get("line_end")
+    if isinstance(line_start, int) and isinstance(line_end, int):
+        source_type = citation.get("source_type") or "log"
+        source_id = citation.get("source_id") or "raw-input"
+        matched = allowed_by_lines.get((source_type, source_id, line_start, line_end))
+        if matched:
+            return matched
+
+    return None

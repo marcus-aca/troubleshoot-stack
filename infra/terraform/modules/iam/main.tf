@@ -63,7 +63,9 @@ locals {
     {
       Effect = "Allow"
       Action = [
-        "cloudwatch:PutMetricData"
+        "cloudwatch:PutMetricData",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:GetMetricStatistics"
       ]
       Resource = "*"
     }

@@ -42,6 +42,7 @@ class ParserFixtureTests(unittest.TestCase):
         self.assertEqual(primary_evidence.line_start, 1)
         self.assertEqual(primary_evidence.line_end, 1)
         self.assertEqual(primary_evidence.excerpt_hash, _hash_line(expected_primary))
+        self.assertEqual(primary_evidence.excerpt, expected_primary)
 
     def test_cloudwatch_parser(self):
         raw_text = _read_fixture("cloudwatch.log")
@@ -58,6 +59,7 @@ class ParserFixtureTests(unittest.TestCase):
         self.assertEqual(primary_evidence.line_start, 2)
         self.assertEqual(primary_evidence.line_end, 2)
         self.assertEqual(primary_evidence.excerpt_hash, _hash_line(expected_primary))
+        self.assertEqual(primary_evidence.excerpt, expected_primary)
 
     def test_python_traceback_parser(self):
         raw_text = _read_fixture("python_traceback.log")
@@ -71,6 +73,7 @@ class ParserFixtureTests(unittest.TestCase):
         self.assertEqual(primary_evidence.line_start, 6)
         self.assertEqual(primary_evidence.line_end, 6)
         self.assertEqual(primary_evidence.excerpt_hash, _hash_line(expected_primary))
+        self.assertEqual(primary_evidence.excerpt, expected_primary)
 
     def test_generic_parser(self):
         raw_text = _read_fixture("generic.log")
@@ -81,6 +84,7 @@ class ParserFixtureTests(unittest.TestCase):
         self.assertEqual(frame.evidence_map[0].line_start, 1)
         self.assertEqual(frame.evidence_map[0].line_end, 1)
         self.assertEqual(frame.evidence_map[0].excerpt_hash, _hash_line(expected_primary))
+        self.assertEqual(frame.evidence_map[0].excerpt, expected_primary)
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ conversation_state_table_name  = "troubleshooter-conversation-state"
 conversation_ttl_seconds       = 604800
 budget_table_name  = "troubleshooter-budgets"
 budget_enabled     = true
-budget_token_limit = 5000
+budget_token_limit = 3000
 budget_window_minutes = 15
 
 uploads_bucket_name   = "troubleshooter-uploads"

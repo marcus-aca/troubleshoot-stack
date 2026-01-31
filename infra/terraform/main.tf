@@ -52,6 +52,7 @@ module "ecs_service" {
       AWS_REGION        = var.region
       LLM_MODE          = var.llm_mode
       BEDROCK_MODEL_ID  = var.bedrock_model_id
+      LLM_COST_PER_1K_TOKENS = tostring(var.llm_cost_per_1k_tokens)
       CW_METRICS_ENABLED  = tostring(var.cw_metrics_enabled)
       CW_METRICS_NAMESPACE = var.cw_metrics_namespace
       BUDGET_ENABLED       = tostring(var.budget_enabled)
@@ -244,4 +245,5 @@ module "observability" {
   apigw_5xx_error_rate_threshold_percent = var.apigw_5xx_error_rate_threshold_percent
   alarm_actions                          = var.alarm_actions
   ok_actions                             = var.alarm_ok_actions
+  custom_metrics_namespace               = var.custom_metrics_namespace
 }

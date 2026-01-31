@@ -280,6 +280,7 @@ def _make_evidence(source_id: str, line_start: int, line_end: int, text: str) ->
         line_start=line_start,
         line_end=line_end,
         excerpt_hash=digest,
+        excerpt=text.strip()[:300],
     )
 
 

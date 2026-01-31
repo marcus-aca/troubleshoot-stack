@@ -2,7 +2,7 @@
 Guardrails (MVP): rate limits, per-user budgets, and ephemeral pgvector caching
 
 ## Summary
-This MVP keeps guardrails small and demo-focused: (1) API-level rate limiting via API Gateway usage plans, (2) a budget cap in DynamoDB (single shared user, 15-minute window), and (3) an **ephemeral semantic cache** using pgvector running alongside the API in ECS. The cache is in-memory only (no persistence) so it is easy to explain and cheap to run while still showcasing semantic search.
+This MVP keeps guardrails small and demo-focused: (1) API-level rate limiting via API Gateway usage plans, (2) a budget cap in DynamoDB (single shared user, 15-minute window), (3) a **domain-only guardrail** that accepts coding, infrastructure as code, and CI/CD automation requests, and (4) an **ephemeral semantic cache** using pgvector running alongside the API in ECS. The cache is in-memory only (no persistence) so it is easy to explain and cheap to run while still showcasing semantic search.
 
 Goals:
 - Prevent runaway cost and abuse.
@@ -59,7 +59,7 @@ Ephemeral semantic caching (pgvector in ECS)
 - **Embedding model (implemented):**
   - Bedrock `amazon.titan-embed-text-v2:0` with `dimensions=256` and `normalize=true`.
 - **Cache key (implemented):**
-  - `question`, `incident_frame.primary_error_signature`, `incident_frame.services`, `incident_frame.infra_components`.
+  - `response`, `incident_frame.primary_error_signature`, `incident_frame.services`, `incident_frame.infra_components`.
   - Does **not** include conversation history.
 - **Cache lookup flow (implemented):**
   - Sanitize key → embed → kNN lookup → accept if similarity >= 0.95 and `expires_at` > now.

@@ -6,7 +6,7 @@ Provide a concrete, actionable plan to initialize the project repository, define
 - Choose and document runtime and libraries (recommendation: Python + FastAPI).
 - Deliver stable API contracts for `/triage`, `/explain`, `/status`, plus conversation context handling.
 - Create repo skeleton with CI, formatting, linting, and an IaC layout using Terraform.
-- Produce an OpenAPI draft and canonical response schema for evaluation and integration tests.
+- Produce an OpenAPI draft and canonical response schema for evaluation and integration tests; expose a minimal chat response to the frontend.
 - Establish request-id propagation, logging, and minimal auth (API key).
 - Finalize architecture decisions: API Gateway → ECS Fargate in `us-west-2`, DynamoDB session storage, and semantic caching via OpenSearch Serverless.
 
@@ -27,7 +27,7 @@ High-level architecture
 - Observability:
   - Automatic `x-request-id` header propagation, structured JSON logs, and metrics hooks for latency and error rate.
 - Data flow (request -> response):
-  - Request arrives with error logs/trace stack -> auth -> request-id assigned if missing -> input validated -> conversation context loaded -> log parsing + triage pipeline invoked -> optional tool calls -> model scoring -> canonical response assembled -> response returned with request-id and trace headers -> logs emitted. Updated context stored for next turn.
+  - Request arrives with error logs/trace stack -> auth -> request-id assigned if missing -> input validated -> conversation context loaded -> log parsing + triage pipeline invoked -> optional tool calls -> model scoring -> canonical response assembled and stored -> chat response returned with request-id and trace headers -> logs emitted. Updated context stored for next turn.
 - Evidence storage:
   - **Inputs table** (DynamoDB, TTL): raw user inputs keyed by `input_id` for deterministic citations. Also store derived artifacts as separate items when needed.
   - **Conversation events table** (DynamoDB, TTL): per-turn record keyed by `conversation_id` + `event_id` storing raw input, incident frame, and canonical response.
@@ -36,14 +36,14 @@ High-level architecture
   - Semantic cache of sanitized input stored in OpenSearch Serverless (vector index). Cache adapter uses embeddings of sanitized input + prompt version to retrieve semantically similar prior responses with TTL metadata.
 
 Canonical API contracts (high level)
-- /triage: analyze an incoming error log or trace stack with optional context, return candidate hypotheses and recommended runbook steps and fixes.
-- /explain: given a hypothesis id, trace, or follow-up question with prior context, return an explanation with citations and confidence.
+- /triage: analyze an incoming error log or trace stack with optional context, return a chat response (`assistant_message`) and metadata; canonical response remains internal for evaluation.
+- /explain: given a follow-up response or new log input, return a chat response grounded in session context; canonical response remains internal.
 - /status: health and readiness for service + dependency checks.
 - Context handling: include `conversation_id` in requests to maintain multi-turn troubleshooting state (stored server-side or via signed context token).
   - If `conversation_id` is missing, the backend should generate one (default to request_id for MVP) and return it so the next turn can be linked.
 
 Canonical response schema (full definition in Deliverables; see Implementation Steps for required keys)
-- Root fields include `request_id`, `timestamp`, `hypotheses[]`, `runbook_steps[]`, `proposed_fix`, `risk_notes`, `rollback`, `next_checks`, `metadata`.
+- Root fields include `request_id`, `timestamp`, `assistant_message`, `completion_state`, `next_question?`, `tool_calls[]`, `hypotheses[]`, `fix_steps[]`, `metadata`.
 
 Non-functional requirements
 - CI enforces lint, formatting, type checks, unit tests.
@@ -66,11 +66,12 @@ Phase 0 — Repo and governance (1–2 days)
 Phase 1 — API surface + schemas (2–4 days)
 - Design OpenAPI skeleton:
   - /triage POST (accepts error logs/trace stack + optional context and conversation_id)
-  - /explain POST (accepts follow-up questions + conversation_id)
+  - /explain POST (accepts follow-up responses + conversation_id)
   - /status GET
-- Implement pydantic schemas for request and canonical response. Minimal example fields:
+- Implement pydantic schemas for request, canonical response (internal), and chat response (external). Minimal example fields:
   - request: {id?, source, payload, timestamp, context?, conversation_id?, prior_messages?}
-  - response: {request_id, timestamp, hypotheses[], runbook_steps[], proposed_fix, risk_notes[], rollback[], next_checks[], metadata, conversation_id}
+  - response (internal): {request_id, timestamp, assistant_message, completion_state, next_question?, tool_calls[], hypotheses[], fix_steps[], metadata, conversation_id}
+  - response (external): {request_id, timestamp, assistant_message, completion_state, next_question?, tool_calls[], hypotheses[], fix_steps[], metadata, conversation_id}
 - Ensure automatic generation of OpenAPI via FastAPI; commit an OpenAPI JSON/YAML to /docs/openapi.json for review.
 - Add example cassettes: sample requests and expected responses (for tests and OpenAPI validation).
 
@@ -156,11 +157,11 @@ Operational details (small, actionable items)
 (Consolidated and actionable — must be testable)
 - OpenAPI:
   - An OpenAPI JSON/YAML exists at /docs/openapi.json and validates against example request/response pairs using an openapi validator in CI.
-  - The OpenAPI includes `/triage` (POST), `/explain` (POST), and `/status` (GET) with request and response schemas matching the canonical schema.
+  - The OpenAPI includes `/triage` (POST), `/explain` (POST), and `/status` (GET) with request and response schemas matching the chat response schema; canonical schema is validated internally.
 - API functionality:
   - /status returns 200 and includes a `dependencies` list indicating the health of mocked services (cache, parser, tools, model).
-  - /triage accepts the canonical request and returns the canonical response shape with `request_id`, `hypotheses[]`, and at least one `runbook_steps[]`.
-  - /explain returns an explanation with at least one citation and confidence score for a sample input.
+  - /triage accepts the request and returns a chat response with `assistant_message` and `request_id`; canonical response is stored internally.
+  - /explain returns a chat response that addresses the follow-up response with context; canonical response is stored internally.
 - CI:
   - GitHub Actions pipeline runs on PRs and fails on formatting (black), lint (ruff/flake8), type checks (mypy), and pytest unit tests.
   - Terraform formatting/validation step runs on the infra folder and passes (or is included but non-blocking until infra is complete).

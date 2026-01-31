@@ -16,6 +16,7 @@ Creates CloudWatch log groups, dashboards, and alarms.
 - `ok_actions`
 - `custom_metrics_namespace`
 - `cache_hit_metric_name`
+- `api_latency_metric_name`
 
 ## Outputs
 - `dashboard_url`

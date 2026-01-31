@@ -8,7 +8,7 @@ AWS_REGION := $(shell AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) outp
 FRONTEND_BUCKET := $(shell AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) output -raw frontend_bucket_name 2>/dev/null)
 CLOUDFRONT_DIST_ID := $(shell AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) output -raw frontend_cloudfront_distribution_id 2>/dev/null)
 
-.PHONY: push-api login-ecr build-api test-api-parser test-api tf-apply tf-destroy build-frontend deploy-frontend frontend-env
+.PHONY: push-api login-ecr build-api test-api-parser test-api tf-apply tf-destroy build-frontend deploy-frontend frontend-env deploy-all
 
 login-ecr:
 	@if [ -z "$(ECR_REPO)" ]; then echo "ECR repo not found. Run terraform apply in $(TF_DIR)."; exit 1; fi
@@ -76,3 +76,9 @@ tf-apply:
 
 tf-destroy:
 	AWS_PROFILE=$(AWS_PROFILE) terraform -chdir=$(TF_DIR) destroy -auto-approve
+
+deploy-all:
+	@$(MAKE) tf-apply
+	@$(MAKE) push-api
+	@$(MAKE) frontend-env
+	@$(MAKE) deploy-frontend

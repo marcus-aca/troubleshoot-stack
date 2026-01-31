@@ -53,6 +53,12 @@ variable "bedrock_model_id" {
   default     = "openai.gpt-oss-20b-1:0"
 }
 
+variable "llm_cost_per_1k_tokens" {
+  type        = number
+  description = "Cost per 1K tokens in USD for the active model."
+  default     = 0.002
+}
+
 variable "cw_metrics_enabled" {
   type        = bool
   description = "Enable CloudWatch metrics emission from the API service."
@@ -421,6 +427,12 @@ variable "alarm_ok_actions" {
   type        = list(string)
   description = "OK action ARNs for alarms."
   default     = []
+}
+
+variable "custom_metrics_namespace" {
+  type        = string
+  description = "Namespace for custom application metrics."
+  default     = "Troubleshooter/LLM"
 }
 
 variable "bedrock_model_arns" {

@@ -45,6 +45,10 @@ Redaction strategy
   - Generic long base64-like secrets (configurable length threshold)
   - Emails: \b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b
   - kube tokens/service account tokens: patterns beginning with eyJ[A-Za-z0-9-_=.]{10,}
+  - MAC addresses: (?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2} and [0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}
+  - Passport numbers (keyworded): passport(?:\s*no|\s*number)?\s*[:#-]*[A-Z0-9]{6,9}
+  - Driver's license numbers (keyworded): driver'?s?\s*licen[cs]e|DL|D/L
+  - Business/tax numbers (keyworded): EIN|TIN|VAT|ABN|BN|GST|Business No|Company No
 - Redaction output: replace matches with placeholders such as [REDACTED-<TYPE>] or mask partial characters (e.g., AKIAxxxxxxxxxxxxxx).
 - Maintain an audit-safe record: do not keep original matched substring; instead increment a redaction_count and record pattern IDs (not matched values) for telemetry.
 

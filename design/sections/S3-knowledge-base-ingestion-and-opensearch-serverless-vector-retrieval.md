@@ -9,7 +9,7 @@ Build a reliable parser that turns pasted logs/trace stacks into a structured de
 Goals
 - Normalize raw logs into structured fields (timestamps, service, environment, severity, error signatures, request ids).
 - Extract entities and hints (region, account, cluster, ALB target group, IAM role, Terraform resource, etc.).
-- Support deterministic citations back to log line ranges and tool outputs.
+- Support deterministic citations back to log line ranges and tool outputs, including short evidence excerpts.
 - Preserve a minimal, schema-valid frame even when parsing fails.
 Non-goals
 - No vector knowledge base ingestion or retrieval for MVP.
@@ -26,7 +26,7 @@ Outputs
   - services[]
   - infra_components[]
   - suspected_failure_domain
-  - evidence_map[] (line ranges, file ids, tool output ids)
+- evidence_map[] (line ranges, file/tool ids, evidence excerpts)
   - parse_confidence
   - parser_version
 
@@ -42,7 +42,7 @@ API integration
 
 Storage and citation map
 - Store raw input with line numbers in DynamoDB (inputs table + TTL) so citations can reference stable line ranges.
-- Evidence map links to log line ranges and tool output ids for traceability in responses.
+- Evidence map links to log line ranges and tool output ids for traceability in responses, and stores an excerpt so the UI can show the cited text.
 - Persist incident frames and canonical responses in a **conversation events** table (PK `conversation_id`, SK `event_id`) so multi-turn context can be reconstructed deterministically.
 - Maintain a **conversation state** table with the latest incident frame + response summary for quick LLM context assembly.
 - On each turn:
@@ -54,7 +54,7 @@ Incident frame schema (draft)
 - signatures: {primary_error_signature, secondary_signatures[]}
 - context: {time_window, services[], infra_components[], suspected_failure_domain, environment, region, account_id}
 - entities: {cluster, namespace, node, pod, alb_target_group, iam_role, terraform_resource, request_ids[]}
-- evidence_map[]: {source_type: log|tool, source_id, line_start, line_end, excerpt_hash}
+- evidence_map[]: {source_type: log|tool, source_id, line_start, line_end, excerpt_hash, excerpt}
 
 ## Implementation Steps
 Phase 1 — Schema and interfaces (1–2 days)

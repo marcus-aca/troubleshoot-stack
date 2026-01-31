@@ -25,6 +25,7 @@ High-level design decisions and enforcement points:
    - Two-tier approach:
      - Automatic PII/secrets detection at ingestion (regex + configurable ML detector). Detected items are redacted or tokenized before further processing.
      - UI-level warnings to instruct users not to paste secrets; client-side redaction optional but server-side enforcement required.
+     - Redaction patterns include keys/tokens, emails, IPs, MAC addresses, passport/driver's license numbers, and business/tax identifiers (keyworded).
    - Optionally, provide an "opt-in debug" workflow where raw data is stored for troubleshooting under strict access controls and TTL.
 
 4. IAM and service separation
@@ -200,6 +201,8 @@ Concrete external systems, approvals, and teams required.
   - ECS autoscaling limits: configure min/max tasks and avoid unlimited scaling.
   - API Gateway throttles: establish per-API-key and global throttles (burst/steady).
   - Per-user or per-account quotas enforced in application to avoid abuse.
+- Domain guardrail:
+  - Reject non-technical requests; only allow coding, infrastructure as code, and CI/CD automation topics.
 - Billing guardrails:
   - AWS Budgets + CloudWatch billing alarms that notify at 75%, 90%, and 100% of planned monthly budget.
   - Automated soft-reduction of concurrency or blocking of non-critical features if cost thresholds are breached (requires product approval).

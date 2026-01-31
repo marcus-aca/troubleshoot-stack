@@ -216,7 +216,7 @@
     },
     "/explain": {
       "post": {
-        "summary": "Explain a hypothesis or follow-up question",
+        "summary": "Explain a hypothesis or follow-up response",
         "operationId": "explain",
         "security": [
           {
@@ -507,6 +507,210 @@
           }
         }
       }
+    },
+    "/metrics/summary": {
+      "get": {
+        "summary": "API latency percentiles summary",
+        "operationId": "metricsSummary",
+        "x-amazon-apigateway-integration": {
+          "type": "http_proxy",
+          "httpMethod": "GET",
+          "connectionType": "INTERNET",
+          "uri": "http://${alb_dns_name}:${alb_listener_port}/metrics/summary",
+          "responses": {
+            "default": {
+              "responseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": "'${cors_allow_origin}'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Request-Id,X-Api-Key'",
+                "method.response.header.Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+                "method.response.header.Access-Control-Expose-Headers": "'X-Request-Id'"
+              },
+              "statusCode": "200"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Metrics summary response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsSummaryResponse"
+                }
+              }
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Methods": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "summary": "CORS preflight",
+        "responses": {
+          "200": {
+            "description": "CORS response",
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Methods": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {}
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "mock",
+          "requestTemplates": {
+            "application/json": "{\"statusCode\": 200}"
+          },
+          "responses": {
+            "default": {
+              "statusCode": "200",
+              "responseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": "'${cors_allow_origin}'",
+                "method.response.header.Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Request-Id,X-Api-Key'"
+              },
+              "responseTemplates": {
+                "application/json": "{}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/budget/status": {
+      "get": {
+        "summary": "Budget status",
+        "operationId": "budgetStatus",
+        "x-amazon-apigateway-integration": {
+          "type": "http_proxy",
+          "httpMethod": "GET",
+          "connectionType": "INTERNET",
+          "uri": "http://${alb_dns_name}:${alb_listener_port}/budget/status",
+          "responses": {
+            "default": {
+              "responseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": "'${cors_allow_origin}'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Request-Id,X-Api-Key'",
+                "method.response.header.Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+                "method.response.header.Access-Control-Expose-Headers": "'X-Request-Id'"
+              },
+              "statusCode": "200"
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Budget status response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetStatusResponse"
+                }
+              }
+            },
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Methods": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Expose-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "options": {
+        "summary": "CORS preflight",
+        "responses": {
+          "200": {
+            "description": "CORS response",
+            "headers": {
+              "Access-Control-Allow-Origin": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Methods": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Access-Control-Allow-Headers": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {}
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "type": "mock",
+          "requestTemplates": {
+            "application/json": "{\"statusCode\": 200}"
+          },
+          "responses": {
+            "default": {
+              "statusCode": "200",
+              "responseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": "'${cors_allow_origin}'",
+                "method.response.header.Access-Control-Allow-Methods": "'GET,POST,OPTIONS'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,X-Request-Id,X-Api-Key'"
+              },
+              "responseTemplates": {
+                "application/json": "{}"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -533,94 +737,65 @@
       "TriageRequest": {
         "type": "object",
         "required": [
-          "source",
-          "payload"
+          "raw_text"
         ],
         "properties": {
-          "id": {
+          "request_id": {
             "type": "string"
-          },
-          "source": {
-            "type": "string",
-            "description": "Origin of the log or trace."
-          },
-          "payload": {
-            "type": "string",
-            "description": "Raw error log or trace stack."
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "context": {
-            "type": "object",
-            "additionalProperties": true
           },
           "conversation_id": {
             "type": "string"
           },
-          "prior_messages": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PriorMessage"
-            }
+          "source": {
+            "type": "string"
+          },
+          "raw_text": {
+            "type": "string",
+            "description": "Raw error log or trace stack."
+          },
+          "redaction_hits": {
+            "type": "integer",
+            "description": "Client-side redaction hits applied before submit.",
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
       "ExplainRequest": {
         "type": "object",
         "required": [
-          "payload"
+          "response",
+          "conversation_id"
         ],
         "properties": {
-          "id": {
+          "request_id": {
             "type": "string"
-          },
-          "payload": {
-            "type": "string",
-            "description": "Follow-up question or hypothesis id."
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "context": {
-            "type": "object",
-            "additionalProperties": true
           },
           "conversation_id": {
             "type": "string"
+          },
+          "response": {
+            "type": "string",
+            "description": "Follow-up response or tool output."
+          },
+          "redaction_hits": {
+            "type": "integer",
+            "description": "Client-side redaction hits applied before submit.",
+            "nullable": true
           },
           "incident_frame": {
             "type": "object",
             "description": "Optional. If omitted, the API will reuse the latest incident frame for the conversation.",
             "additionalProperties": true
           },
-          "prior_messages": {
+          "tool_results": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PriorMessage"
+              "$ref": "#/components/schemas/ToolResult"
             }
-          }
-        }
-      },
-      "PriorMessage": {
-        "type": "object",
-        "required": [
-          "role",
-          "content"
-        ],
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "user",
-              "assistant",
-              "system"
-            ]
-          },
-          "content": {
-            "type": "string"
           }
         }
       },
@@ -629,8 +804,8 @@
         "required": [
           "request_id",
           "timestamp",
-          "hypotheses",
-          "runbook_steps"
+          "assistant_message",
+          "completion_state"
         ],
         "properties": {
           "request_id": {
@@ -640,34 +815,29 @@
             "type": "string",
             "format": "date-time"
           },
+          "assistant_message": {
+            "type": "string"
+          },
+          "completion_state": {
+            "type": "string"
+          },
+          "next_question": {
+            "type": "string",
+            "nullable": true
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolCall"
+            }
+          },
           "hypotheses": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/Hypothesis"
+              "$ref": "#/components/schemas/ChatHypothesis"
             }
           },
-          "runbook_steps": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RunbookStep"
-            }
-          },
-          "proposed_fix": {
-            "type": "string"
-          },
-          "risk_notes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "rollback": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "next_checks": {
+          "fix_steps": {
             "type": "array",
             "items": {
               "type": "string"
@@ -736,50 +906,12 @@
               },
               "category": {
                 "type": "string"
-              },
-              "recommended_tool_calls": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ToolCall"
-                }
               }
             },
             "additionalProperties": true
           },
           "conversation_id": {
             "type": "string"
-          }
-        }
-      },
-      "Hypothesis": {
-        "type": "object",
-        "required": [
-          "id",
-          "rank",
-          "confidence",
-          "explanation"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "rank": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "confidence": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1
-          },
-          "explanation": {
-            "type": "string"
-          },
-          "citations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EvidenceMapEntry"
-            }
           }
         }
       },
@@ -814,37 +946,59 @@
       "ToolCall": {
         "type": "object",
         "required": [
-          "tool"
+          "id",
+          "title",
+          "command"
         ],
         "properties": {
-          "tool": {
+          "id": {
             "type": "string"
           },
-          "call_spec": {
-            "type": "object",
-            "additionalProperties": true
+          "title": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "expected_output": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
-      "RunbookStep": {
+      "ToolResult": {
         "type": "object",
         "required": [
-          "step_number",
-          "description"
+          "id",
+          "output"
         ],
         "properties": {
-          "step_number": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "description": {
+          "id": {
             "type": "string"
           },
-          "command_or_console_path": {
+          "output": {
+            "type": "string"
+          }
+        }
+      },
+      "ChatHypothesis": {
+        "type": "object",
+        "required": [
+          "id",
+          "confidence",
+          "explanation"
+        ],
+        "properties": {
+          "id": {
             "type": "string"
           },
-          "estimated_time_mins": {
-            "type": "number"
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "explanation": {
+            "type": "string"
           }
         }
       },
@@ -883,6 +1037,82 @@
                 }
               }
             }
+          }
+        }
+      },
+      "MetricsSummaryResponse": {
+        "type": "object",
+        "required": [
+          "timestamp",
+          "api_latency_p50_ms",
+          "api_latency_p95_ms",
+          "source"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "api_latency_p50_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "api_latency_p95_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "llm_latency_p50_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "llm_latency_p95_ms": {
+            "type": "number",
+            "nullable": true
+          },
+          "source": {
+            "type": "string"
+          },
+          "sample_count": {
+            "type": "integer"
+          },
+          "cache_hit_rate": {
+            "type": "number",
+            "nullable": true
+          },
+          "api_error_rate": {
+            "type": "number",
+            "nullable": true
+          },
+          "budget_denied_count": {
+            "type": "number",
+            "nullable": true
+          }
+        }
+      },
+      "BudgetStatusResponse": {
+        "type": "object",
+        "required": [
+          "usage_window",
+          "retry_after",
+          "token_limit",
+          "tokens_used",
+          "remaining_budget"
+        ],
+        "properties": {
+          "usage_window": {
+            "type": "string"
+          },
+          "retry_after": {
+            "type": "string"
+          },
+          "token_limit": {
+            "type": "integer"
+          },
+          "tokens_used": {
+            "type": "integer"
+          },
+          "remaining_budget": {
+            "type": "integer"
           }
         }
       },

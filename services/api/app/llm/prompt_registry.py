@@ -15,8 +15,8 @@ class Prompt:
 
 
 DEFAULT_PROMPT_REGISTRY = {
-    "triage": {"version": "v2", "filename": "v2/triage/triage.md"},
-    "explain": {"version": "v1", "filename": "v1/explain/explain.md"},
+    "triage": {"version": "v3", "filename": "v3/triage/triage.md"},
+    "explain": {"version": "v2", "filename": "v2/explain/explain.md"},
 }
 
 

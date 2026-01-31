@@ -77,6 +77,27 @@ locals {
         ]
       }
     }
+    ,
+    {
+      type   = "metric"
+      x      = 0
+      y      = 12
+      width  = 12
+      height = 6
+      properties = {
+        title   = "API Service Latency (p50/p95)"
+        view    = "timeSeries"
+        stacked = false
+        region  = data.aws_region.current.name
+        period  = 60
+        metrics = [
+          [var.custom_metrics_namespace, var.api_latency_metric_name, "Endpoint", "/triage", "StatusCode", "200", { stat = "p50" }],
+          [".", var.api_latency_metric_name, ".", ".", ".", ".", { stat = "p95" }],
+          [".", var.api_latency_metric_name, "Endpoint", "/explain", "StatusCode", "200", { stat = "p50" }],
+          [".", var.api_latency_metric_name, ".", ".", ".", ".", { stat = "p95" }]
+        ]
+      }
+    }
   ])
   alb_widgets = jsonencode([
     {

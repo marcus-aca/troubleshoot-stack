@@ -11,12 +11,12 @@ from uuid import uuid4
 import boto3
 import psycopg
 
-from ..observability import CloudWatchMetrics, log_event
+from ..observability import CloudWatchMetrics, RollingCacheHitRate, log_event
 from ..schemas import CanonicalResponse, IncidentFrame
 
 EMBED_MODEL_ID = "amazon.titan-embed-text-v2:0"
 EMBED_DIMENSIONS = 256
-DEFAULT_SIMILARITY_THRESHOLD = 0.95
+DEFAULT_SIMILARITY_THRESHOLD = 0.9
 DEFAULT_TTL_SECONDS = 86400
 
 
@@ -27,7 +27,7 @@ class CacheHit:
 
 
 class PgVectorCache:
-    def __init__(self) -> None:
+    def __init__(self, *, rolling_cache: Optional[RollingCacheHitRate] = None) -> None:
         self.enabled = os.getenv("PGVECTOR_ENABLED", "false").lower() == "true"
         self.host = os.getenv("PGVECTOR_HOST", "127.0.0.1")
         self.port = int(os.getenv("PGVECTOR_PORT", "5432"))
@@ -39,6 +39,7 @@ class PgVectorCache:
         )
         self.ttl_seconds = int(os.getenv("PGVECTOR_TTL_SECONDS", str(DEFAULT_TTL_SECONDS)))
         self.metrics = CloudWatchMetrics()
+        self.rolling_cache = rolling_cache
         self._client = None
         self._embedding_client = None
 
@@ -83,9 +84,9 @@ class PgVectorCache:
                     return
                 time.sleep(sleep_seconds)
 
-    def get_explain_cache_key(self, frame: IncidentFrame, question: str) -> str:
+    def get_explain_cache_key(self, frame: IncidentFrame, response: str) -> str:
         parts = [
-            question.strip(),
+            response.strip(),
             frame.primary_error_signature or "",
             " ".join(frame.services or []),
             " ".join(frame.infra_components or []),
@@ -192,6 +193,8 @@ class PgVectorCache:
 
     def _emit_cache_metric(self, *, endpoint: str, hit: bool) -> None:
         self.metrics.put_cache_metrics(endpoint=endpoint, hit=hit)
+        if self.rolling_cache:
+            self.rolling_cache.add(hit)
 
 
 def _format_vector_literal(embedding: list[float]) -> str:

@@ -2,49 +2,42 @@
 Observability, auditability, and dashboards (logs/metrics/traces)
 
 ## Summary
-Provide end-to-end observability (logs, metrics, traces) and operational dashboards for the API and backend services so every request can be audited, traced, and measured against SLOs. Deliverables:
-- Structured, correlated logs for each request including model, prompt version, cost estimate, cache metadata, and tool usage.
-- OpenTelemetry traces with key spans (HTTP, model generation, tool calls, DB).
-- Custom metrics (EMF or PutMetricData) for latency percentiles, cost per request, cache hit rate, error rates, and evaluation pass rates.
-- CloudWatch dashboards and alarms with runbooks and alert actions.
-- Automated deployment steps, tests, and rollout plan.
+Provide MVP-level observability for the API service so requests can be audited and measured. Implemented in the current codebase:
+- Correlated request_id across responses and logs.
+- Structured JSON logs for request start/end and errors.
+- Basic CloudWatch metrics for API request count, latency, error count, and budget denials.
+ - Metrics summary endpoint (`/metrics/summary`) that surfaces p50/p95 latency from CloudWatch and falls back to in-memory rolling percentiles.
+Future scope (not implemented in MVP): full OTEL traces, dashboards/alarms, and multi-service metrics.
 
 Owner: Observability/Platform team lead.
 Target timeline: 4 weeks (config + instrumentation + dashboards + tests) — adjust per team capacity.
 
-## Design
+## Design (MVP)
 Goals:
-- Correlate logs, traces, and metrics using a single request_id propagated across components.
-- Keep logs structured (JSON) with stable field names and controlled cardinality.
-- Use OpenTelemetry (OTEL) for traces and metrics; export via ADOT Collector (or OTLP) to CloudWatch / X-Ray / third-party APM as required.
-- Emit CloudWatch-native metrics using EMF for high-cardinality dimensions to avoid PutMetricData throttling; keep high-cardinality fields in logs & traces, not as metric dimensions.
-- Protect sensitive data: do not log raw prompt text or PII. Provide deterministic redaction & hashed identifiers for sensitive values.
-- Provide dashboards that reflect SLO-style indicators and support drill-down via request_id.
+ - Correlate logs and metrics using a single request_id propagated across the API.
+ - Keep logs structured (JSON) with stable field names and controlled cardinality.
+ - Emit basic CloudWatch metrics via PutMetricData for request count, latency, and error count.
+ - Protect sensitive data: do not log raw prompt text or PII.
 Non-goals:
-- No custom SIEM or full enterprise security analytics in MVP.
-- No per-user metric dimensions (avoid high-cardinality metrics).
+ - No OTEL tracing in MVP.
+ - No dashboards/alarms in MVP.
+ - No per-user metric dimensions (avoid high-cardinality metrics).
 
-Key components:
-- API Gateway / load balancer: inject upstream request id header (X-Request-Id) if not present, forward trace headers (traceparent).
-- Application service(s): add OTEL SDK + logger middleware that:
+Key components (MVP):
+- API service middleware:
   - Generates or accepts request_id
-  - Starts root span and attaches trace context
-  - Emits structured logs per request and per significant events
-  - Emits custom metrics (EMF) for request-level aggregates
-- OTEL Collector (ADOT) in AWS (or as sidecar) to export traces to chosen backend (CloudWatch, X-Ray, or third-party), and metrics to CloudWatch.
-- Storage/retention: CloudWatch Logs (30/90/365 days depending on compliance), S3 for long-term archived logs if required.
-- Dashboards: CloudWatch dashboard with widgets and alarms integrated with SNS / PagerDuty for notifications.
+  - Emits structured JSON logs per request (start/end/error)
+  - Emits basic CloudWatch metrics (request count, latency, error count, budget denied)
+- CloudWatch Logs for API log ingestion (retention policy to be configured).
 
-Log fields and metric naming conventions:
+Log fields and metric naming conventions (MVP):
 - Log namespace: /aws/service/<component> or application/<service-name>
-- Structured logs (JSON) with fields: request_id, user_id (hashed if PII), endpoint, model_id, prompt_version, tokens_in, tokens_out, cost_estimate_usd, cache_hit (bool), cache_id, similarity_score, tool_calls (map name->count), latency_ms (map: total, http, model_generate, tool_calls), log_level, timestamp, environment, deployment_id.
-- Metric namespace: MyApp/Observability (or product-specific). Metric names: RequestLatencyMs, RequestCount, ErrorCount, CacheHitRate, CostPerRequestUSD, TokensPerRequest.
+- Structured logs (JSON) with fields: request_id, endpoint, method, status_code, latency_ms, timestamp.
+- Metric namespace: Troubleshooter/LLM (configurable via `CW_METRICS_NAMESPACE`). Metric names: APIRequestCount, APILatencyMs, APIErrorCount, BudgetDeniedCount.
+- Metrics summary endpoint: `/metrics/summary` provides `api_latency_p50_ms` and `api_latency_p95_ms` with source `cloudwatch` or `memory`.
 
 Tracing:
-- Use W3C trace context propagation (traceparent, tracestate). OTEL root span name convention: service.http_request or http_request.<method>.
-- Spans to create: http_request (root), bedrock_generate (or model_generate), tool_call.<tool_name>, dynamodb_query, downstream_http_call.
-- Attach attributes correlating to log fields (request_id, user_hash, model_id, prompt_version, cache_hit).
-- Sampling: default 1% production, configurable to higher for specific request types; allow full-trace for debug/canary.
+- Not implemented in MVP. Plan for OTEL tracing in a future phase.
 
 Security & Privacy:
 - Redact or hash user identifiers and prompt content before logging.
@@ -55,70 +48,40 @@ Retention & Cost management:
 - Configure retention and lifecycle (CloudWatch Log groups 90 days for hot, archive to S3 for >90 days).
 - Track metric emission cost; avoid high-cardinality metric dimensions.
 
-## Implementation Steps
-1. Define schemas and standards (2 days)
+## Implementation Steps (MVP)
+1. Define schemas and standards (done)
    - Finalize structured log schema, metric names, dimensions, units, and trace/span naming conventions.
    - Publish conventions doc and add to developer onboarding.
 
-2. Instrumentation prep (1 day)
-   - Add OTEL SDK and logging library wrapper to language runtime (e.g., Python/Node/Java).
-   - Provide utility library for:
-     - request_id generation/propagation
-     - PII redaction and hashing (salted HMAC)
-     - EMF metric emitter helper
-     - Span creation helpers
+2. Instrumentation prep (done)
+   - Structured logging helper (`log_event`).
+   - CloudWatch metrics helper (`CloudWatchMetrics`) for API-level metrics.
 
-3. API Gateway / Ingress changes (1 day)
-   - Ensure X-Request-Id is generated at the edge if not present (API Gateway mapping template or ALB header).
-   - Ensure traceparent is forwarded from clients or generated at edge.
-   - Document client requirements for propagating trace headers (optional).
+3. API ingress (future)
+   - Optional: generate X-Request-Id at API Gateway/ALB if missing.
 
-4. Application instrumentation (3–6 days across services)
-   - Middleware to:
-     - Read/generate request_id, accept upstream request id header, and inject into logs and traces.
-     - Start OTEL root span with service.name and request attributes.
-     - Capture per-request structured log at request start and request end with latency breakdown, tokens, etc.
-   - Instrument model generation, DB queries, and tool calls to create named spans with attributes.
-   - Emit EMF metrics at end of request: RequestCount=1, RequestLatencyMs, TokensIn, TokensOut, CostPerRequestUSD, CacheHit=0/1.
-   - Implement sampling rules (1% default) and option to force full traces for debug.
+4. Application instrumentation (done)
+   - Middleware to log request start/end and errors with request_id.
+   - Emit CloudWatch metrics for request count, latency, errors, and budget denials.
 
-5. Collector and export configuration (2 days)
-   - Deploy ADOT Collector (AWS Distro for OpenTelemetry) as service/agent or sidecar.
-   - Configure OTLP exporter to CloudWatch Logs, CloudWatch Metrics (via EMF), and X-Ray (if used). Include metric transformation if needed.
-   - Verify IAM roles/policies for collector to PutMetricData, PutTraceSegments (X-Ray), and write to CloudWatch Logs.
+5. Collector and export configuration (future)
 
-6. Logging & Metrics pipelines (2 days)
-   - Create CloudWatch Log Groups, set retention, and KMS encryption.
-   - Configure log group naming conventions.
-   - Create CloudWatch metric filters only if needed (prefer EMF).
-   - Implement EMF JSON wrappers to submit metrics with dimensions: environment, service, model_id (careful with cardinality).
+6. Logging & Metrics pipelines (MVP)
+   - Use CloudWatch Logs (retention/KMS to be configured).
+   - Emit basic API metrics via PutMetricData.
 
-7. Dashboards & Alarms (2–3 days)
-   - Build CloudWatch dashboard(s) with widgets:
-     - P95 latency, P50, request count, 5xx rate
-     - Cost/request, tokens/request (avg)
-     - Cache hit rate (trend)
-     - Error breakdown by endpoint and model_id (top-N)
-     - Live tail log widget or Insights query link
-   - Create alarms with SNS topic -> PagerDuty / Slack:
-     - p95 latency > threshold for N minutes
-     - 5xx rate > threshold %
-     - Cache hit rate < threshold %
-     - Cost per request > threshold for N minutes
-   - Add runbook links and playbook in alarm descriptions.
+7. Dashboards & Alarms (future)
 
-8. Tests, verification and rollout (2–3 days)
+8. Tests, verification and rollout (MVP)
    - Unit tests for logger, metrics emitter, and trace helpers.
    - Integration test: send synthetic traffic that exercises cache hit/miss, tool calls, and model generation. Verify:
      - One request_id appears in logs across services
-     - Traces show spans in correct order with attributes
-     - Metrics are emitted with expected names/values
-     - Dashboard widgets update with synthetic traffic
+   - Metrics are emitted with expected names/values
    - Canary rollout: enable instrumentation in 5% traffic, monitor, then 25% and 100%.
    - Backout plan: feature flag to disable EMF emission and revert OTEL config; documented rollback commands.
 
-9. Documentation & runbooks (1 day)
-   - Publish how-to for searching by request_id, tracing examples, dashboard guide, and alarm runbooks.
+9. Documentation & runbooks (MVP)
+   - Publish how-to for searching by request_id and checking API metrics.
 
 Total estimated effort: 2–4 sprints depending on number of services and team size.
 
@@ -140,11 +103,10 @@ Total estimated effort: 2–4 sprints depending on number of services and team s
 - KMS for log encryption if required by security/compliance.
 - Storage/S3 for long-term archiving (if using).
 
-## Acceptance Criteria
+## Acceptance Criteria (MVP)
 - All of the following must be true before rollout completes:
   - Instrumented API service emits structured logs (JSON) for each request containing required fields (see Structured logs section) with documented types and examples.
-  - EMF metrics (or equivalent PutMetricData) are emitted for RequestLatencyMs, RequestCount, ErrorCount, CacheHitRate, CostPerRequestUSD, and they appear in CloudWatch Metrics.
-  - OpenTelemetry traces record the prescribed spans (http_request, bedrock_generate/model_generate, tool_call_*, dynamodb_query) and traces can be visualized in the chosen tracing backend.
+  - CloudWatch metrics are emitted for APIRequestCount, APILatencyMs, APIErrorCount, and BudgetDeniedCount.
   - Single request can be traced end-to-end using request_id: logs and traces across components are correlated and searchable.
   - CloudWatch dashboard shows live traffic and SLO-style indicators (p95 latency, request count, 5xx rate, cache hit rate, cost/request).
   - Alarms fire under defined test conditions and notify the configured incident channel (SNS/PagerDuty).

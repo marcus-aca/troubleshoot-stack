@@ -71,3 +71,9 @@ variable "cache_hit_metric_name" {
   description = "Metric name for cache hit rate."
   default     = "CacheHitRate"
 }
+
+variable "api_latency_metric_name" {
+  type        = string
+  description = "Metric name for API latency."
+  default     = "APILatencyMs"
+}

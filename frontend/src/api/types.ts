@@ -4,6 +4,7 @@ export type EvidenceMapEntry = {
   line_start: number;
   line_end: number;
   excerpt_hash: string;
+  excerpt?: string | null;
 };
 
 export type Hypothesis = {
@@ -14,22 +15,33 @@ export type Hypothesis = {
   citations: EvidenceMapEntry[];
 };
 
-export type RunbookStep = {
-  step_number: number;
-  description: string;
-  command_or_console_path?: string;
-  estimated_time_mins?: number;
+export type ToolCall = {
+  id: string;
+  title: string;
+  command: string;
+  expected_output?: string | null;
 };
 
-export type CanonicalResponse = {
+export type ToolResult = {
+  id: string;
+  output: string;
+};
+
+export type ChatHypothesis = {
+  id: string;
+  confidence: number;
+  explanation: string;
+};
+
+export type ChatResponse = {
   request_id: string;
   timestamp: string;
-  hypotheses: Hypothesis[];
-  runbook_steps: RunbookStep[];
-  proposed_fix?: string | null;
-  risk_notes: string[];
-  rollback: string[];
-  next_checks: string[];
+  assistant_message: string;
+  completion_state: string;
+  next_question?: string | null;
+  tool_calls?: ToolCall[];
+  hypotheses?: ChatHypothesis[];
+  fix_steps?: string[];
   metadata: Record<string, unknown>;
   conversation_id?: string | null;
 };
@@ -40,17 +52,41 @@ export type StatusResponse = {
   timestamp: string;
 };
 
+export type MetricsSummary = {
+  timestamp: string;
+  api_latency_p50_ms: number | null;
+  api_latency_p95_ms: number | null;
+  llm_latency_p50_ms?: number | null;
+  llm_latency_p95_ms?: number | null;
+  source: "cloudwatch" | "memory";
+  sample_count?: number;
+  cache_hit_rate?: number | null;
+  api_error_rate?: number | null;
+  budget_denied_count?: number | null;
+};
+
+export type BudgetStatus = {
+  usage_window: string;
+  retry_after: string;
+  token_limit: number;
+  tokens_used: number;
+  remaining_budget: number;
+};
+
 export type TriageRequest = {
   request_id?: string;
   conversation_id?: string;
   source?: string;
   raw_text: string;
+  redaction_hits?: number;
   timestamp?: string;
 };
 
 export type ExplainRequest = {
   request_id?: string;
   conversation_id?: string;
-  question: string;
+  response: string;
+  redaction_hits?: number;
   incident_frame?: Record<string, unknown>;
+  tool_results?: ToolResult[];
 };

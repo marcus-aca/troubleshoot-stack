@@ -22,16 +22,16 @@ def enforce_guardrails(
     hypotheses: Iterable[Hypothesis],
     allowed_citations: Iterable[EvidenceMapEntry],
 ) -> Tuple[List[Hypothesis], GuardrailReport]:
-    allowed = {citation_signature(entry) for entry in allowed_citations}
+    allowed_map = {citation_signature(entry): entry for entry in allowed_citations}
     report = GuardrailReport()
     updated: List[Hypothesis] = []
 
     for hypothesis in hypotheses:
         hypothesis = hypothesis.model_copy(deep=True)
         valid_citations = [
-            entry
+            allowed_map[citation_signature(entry)]
             for entry in hypothesis.citations
-            if citation_signature(entry) in allowed
+            if citation_signature(entry) in allowed_map
         ]
         if not valid_citations:
             hypothesis.confidence = min(hypothesis.confidence, 0.3)

@@ -115,10 +115,25 @@ CanonicalResponse
 }
 ```
 
+### Explain request guardrails
+- `/explain` requires a `conversation_id` and an existing triage session.
+- If `incident_frame` is omitted, the API reuses the latest frame from the conversation state.
+
 ### Triage LLM output (before guardrails)
 ```json
 {
   "category": "iam",
+  "assistant_message": "I need the IAM policy attached to the role to confirm permissions. Please run the command below.",
+  "completion_state": "needs_input",
+  "next_question": "Run the command and paste the output.",
+  "tool_calls": [
+    {
+      "id": "tool-iam-1",
+      "title": "Fetch IAM role policy",
+      "command": "aws iam get-role-policy --role-name example-role --policy-name InlinePolicy",
+      "expected_output": "Policy document JSON"
+    }
+  ],
   "hypotheses": [
     {
       "id": "hyp-iam-1",
@@ -136,15 +151,17 @@ CanonicalResponse
       ]
     }
   ],
-  "recommended_tool_calls": [
-    { "tool": "iam.get_policy", "call_spec": { "role_name": "example-role" } }
-  ]
+  "fix_steps": []
 }
 ```
 
-### Explain LLM output (before guardrails)
+### Explain LLM output (after tool output)
 ```json
 {
+  "assistant_message": "The role policy is missing iam:CreateRole. Add it and re-run terraform apply.",
+  "completion_state": "final",
+  "next_question": null,
+  "tool_calls": [],
   "hypotheses": [
     {
       "id": "hyp-iam-1",
@@ -162,18 +179,7 @@ CanonicalResponse
       ]
     }
   ],
-  "runbook_steps": [
-    {
-      "step_number": 1,
-      "description": "Inspect IAM policy for CreateRole permissions.",
-      "command_or_console_path": "IAM console > Roles",
-      "estimated_time_mins": 10
-    }
-  ],
-  "proposed_fix": "Add iam:CreateRole to the policy and re-apply.",
-  "risk_notes": ["Use least-privilege when updating policies."],
-  "rollback": ["Revert the policy change if unexpected access occurs."],
-  "next_checks": ["Re-run terraform apply and confirm success."]
+  "fix_steps": ["Add iam:CreateRole to the policy and re-apply."]
 }
 ```
 
@@ -182,6 +188,10 @@ CanonicalResponse
 {
   "request_id": "req-xyz",
   "timestamp": "2026-01-30T11:23:55Z",
+  "assistant_message": "The role policy is missing iam:CreateRole. Add it and re-run terraform apply.",
+  "completion_state": "final",
+  "next_question": null,
+  "tool_calls": [],
   "hypotheses": [
     {
       "id": "hyp-iam-1",
@@ -199,24 +209,13 @@ CanonicalResponse
       ]
     }
   ],
-  "runbook_steps": [
-    {
-      "step_number": 1,
-      "description": "Inspect IAM policy for CreateRole permissions.",
-      "command_or_console_path": "IAM console > Roles",
-      "estimated_time_mins": 10
-    }
-  ],
-  "proposed_fix": "Add iam:CreateRole to the policy and re-apply.",
-  "risk_notes": ["Use least-privilege when updating policies."],
-  "rollback": ["Revert the policy change if unexpected access occurs."],
-  "next_checks": ["Re-run terraform apply and confirm success."],
+  "fix_steps": ["Add iam:CreateRole to the policy and re-apply."],
   "metadata": {
-    "prompt_version": "v1",
-    "prompt_filename": "services/api/prompts/v1/explain/explain.md",
+    "prompt_version": "v2",
+    "prompt_filename": "services/api/prompts/v2/explain/explain.md",
     "model_id": "amazon.titan-text-lite-v1",
     "token_usage": { "prompt_tokens": 312, "completion_tokens": 178, "total_tokens": 490, "generated_at_ms": 1769797435000 },
-    "guardrails": { "citation_missing_count": 0, "redactions": 0, "issues": [] }
+    "guardrails": { "citation_missing_count": 0, "redactions": 0, "domain_restricted": 0, "issues": [] }
   },
   "conversation_id": "conv-abc"
 }
@@ -226,5 +225,5 @@ CanonicalResponse
 - Parser extracts a stable incident frame from raw logs and maps evidence lines.
 - Storage keeps recent events; a compact summary is used for context.
 - Prompt registry pins the prompt version used by each endpoint.
-- LLM returns structured JSON; guardrails validate citations and redact identifiers.
+- LLM returns structured JSON; guardrails validate citations, redact identifiers, and enforce domain-only requests.
 - The API returns a canonical response with metadata for auditability.

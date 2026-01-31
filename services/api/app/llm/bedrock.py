@@ -75,6 +75,10 @@ class BedrockAdapter:
         lowered = prompt.lower()
         if "explain" in lowered:
             payload = {
+                "assistant_message": "Here is a concise explanation based on the latest context.",
+                "completion_state": "final",
+                "next_question": None,
+                "tool_calls": [],
                 "hypotheses": [
                     {
                         "id": "hyp-1",
@@ -84,22 +88,15 @@ class BedrockAdapter:
                         "citations": [],
                     }
                 ],
-                "runbook_steps": [
-                    {
-                        "step_number": 1,
-                        "description": "Review the referenced log line and confirm the failing resource.",
-                        "command_or_console_path": "CloudWatch Logs or service console",
-                        "estimated_time_mins": 10,
-                    }
-                ],
-                "proposed_fix": "Verify the config and redeploy if the change is confirmed.",
-                "risk_notes": ["Stubbed response: verify before action."],
-                "rollback": ["Revert the last config change."],
-                "next_checks": ["Re-run the failing request and confirm error clears."],
+                "fix_steps": ["Verify the config and redeploy if the change is confirmed."],
             }
         else:
             payload = {
                 "category": "other",
+                "assistant_message": "I need a bit more context. Please share the exact error output.",
+                "completion_state": "needs_input",
+                "next_question": "Share the exact error output or stack trace.",
+                "tool_calls": [],
                 "hypotheses": [
                     {
                         "id": "hyp-1",
@@ -109,7 +106,7 @@ class BedrockAdapter:
                         "citations": [],
                     }
                 ],
-                "recommended_tool_calls": [],
+                "fix_steps": [],
             }
         text = json.dumps(payload)
         token_usage = _estimate_tokens(prompt, text)

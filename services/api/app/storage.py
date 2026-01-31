@@ -276,10 +276,15 @@ def _build_response_summary(response: CanonicalResponse) -> Dict[str, object]:
         "request_id": response.request_id,
         "timestamp": response.timestamp.isoformat(),
         "top_hypothesis": top_hypothesis.model_dump() if top_hypothesis else None,
-        "proposed_fix": response.proposed_fix,
-        "risk_notes": response.risk_notes,
-        "next_checks": response.next_checks,
+        "assistant_message": response.assistant_message,
+        "completion_state": response.completion_state,
+        "next_question": response.next_question,
+        "tool_calls": [call.model_dump() for call in response.tool_calls],
+        "fix_steps": response.fix_steps,
         "metadata": response.metadata,
+        "guardrail_hits_session": response.metadata.get("guardrail_hits_session")
+        if isinstance(response.metadata, dict)
+        else None,
     }
 
 
@@ -301,11 +306,13 @@ def build_llm_context(storage: StorageAdapter, conversation_id: str, limit: int 
     recent_events = context.get("recent_events") or []
 
     compact_events = []
+    recent_messages = []
     for event in recent_events:
         frame = event.get("incident_frame") or {}
         response = event.get("canonical_response") or {}
         hypotheses = response.get("hypotheses") or []
         top_hypothesis = hypotheses[0] if hypotheses else None
+        raw_input = (event.get("raw_text") or event.get("raw_input") or "")[:800]
         compact_events.append(
             {
                 "request_id": event.get("request_id"),
@@ -315,22 +322,33 @@ def build_llm_context(storage: StorageAdapter, conversation_id: str, limit: int 
                 "infra_components": frame.get("infra_components", []),
                 "suspected_failure_domain": frame.get("suspected_failure_domain"),
                 "top_hypothesis": top_hypothesis,
+                "assistant_message": response.get("assistant_message"),
+                "completion_state": response.get("completion_state"),
+                "next_question": response.get("next_question"),
+                "tool_calls": response.get("tool_calls"),
+                "fix_steps": response.get("fix_steps"),
             }
         )
+        if raw_input:
+            recent_messages.append({"request_id": event.get("request_id"), "raw_input": raw_input})
 
     latest_frame = state.get("latest_incident_frame") or {}
     latest_summary = state.get("latest_response_summary") or {}
 
     prompt = (
-        "You are an expert troubleshooting assistant. Use the conversation context to propose likely root causes, "
-        "next checks, and safe remediation steps. Ground your response in the provided error signatures and evidence.\n\n"
+        "You are an expert troubleshooting assistant. Use the conversation context to decide the next action. "
+        "Ask one question at a time or request a single tool command if needed. When enough context exists, "
+        "return the most likely explanations and fix steps. Ground your response in provided evidence.\n\n"
         f"Conversation ID: {conversation_id}\n"
         f"Latest error signature: {latest_frame.get('primary_error_signature')}\n"
         f"Services: {', '.join(latest_frame.get('services', []))}\n"
         f"Infra components: {', '.join(latest_frame.get('infra_components', []))}\n"
         f"Suspected failure domain: {latest_frame.get('suspected_failure_domain')}\n"
         f"Top hypothesis: {latest_summary.get('top_hypothesis')}\n"
+        f"Pending question: {latest_summary.get('next_question')}\n"
+        f"Pending tool calls: {latest_summary.get('tool_calls')}\n"
         f"Recent events: {compact_events}\n"
+        f"Recent user inputs: {recent_messages}\n"
     )
 
     return {
@@ -338,6 +356,7 @@ def build_llm_context(storage: StorageAdapter, conversation_id: str, limit: int 
         "latest_incident_frame": latest_frame,
         "latest_response_summary": latest_summary,
         "recent_events": compact_events,
+        "recent_messages": recent_messages,
         "prompt": prompt,
         "bedrock_input": {"inputText": prompt},
     }

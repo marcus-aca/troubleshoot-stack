@@ -15,6 +15,7 @@ from .observability import CloudWatchMetrics, log_event
 class BudgetDecision:
     allowed: bool
     retry_after: Optional[str] = None
+    remaining_budget: Optional[int] = None
 
 
 class BudgetEnforcer:
@@ -38,7 +39,7 @@ class BudgetEnforcer:
         table = self.client.Table(self.table_name)
         limit_remaining = self.token_limit - estimated_tokens
         try:
-            table.update_item(
+            response = table.update_item(
                 Key={"user_id": self.user_id, "usage_window": window_key},
                 UpdateExpression=(
                     "SET tokens_used = if_not_exists(tokens_used, :zero) + :tokens, "
@@ -51,6 +52,7 @@ class BudgetEnforcer:
                     ":limit_remaining": limit_remaining,
                     ":now": datetime.now(timezone.utc).isoformat(),
                 },
+                ReturnValues="UPDATED_NEW",
             )
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code")
@@ -65,7 +67,7 @@ class BudgetEnforcer:
                     },
                 )
                 self.metrics.put_budget_denied()
-                return BudgetDecision(allowed=False, retry_after=retry_after)
+                return BudgetDecision(allowed=False, retry_after=retry_after, remaining_budget=0)
             log_event(
                 "budget_error",
                 {
@@ -77,12 +79,39 @@ class BudgetEnforcer:
             )
             return BudgetDecision(allowed=True)
 
-        return BudgetDecision(allowed=True)
+        tokens_used = int(response.get("Attributes", {}).get("tokens_used", 0))
+        remaining_budget = max(self.token_limit - tokens_used, 0)
+        return BudgetDecision(allowed=True, remaining_budget=remaining_budget)
+
+    def get_status(self) -> Optional[dict]:
+        if not self.enabled or not self.client:
+            return None
+        window_start = _window_start(self.window_minutes)
+        window_key = window_start.strftime("%Y-%m-%dT%H:%MZ")
+        retry_after = (window_start + timedelta(minutes=self.window_minutes)).strftime("%Y-%m-%dT%H:%MZ")
+        table = self.client.Table(self.table_name)
+        try:
+            response = table.get_item(Key={"user_id": self.user_id, "usage_window": window_key})
+        except ClientError:
+            return None
+        item = response.get("Item") or {}
+        tokens_used = int(item.get("tokens_used", 0)) if item else 0
+        remaining_budget = max(self.token_limit - tokens_used, 0)
+        return {
+            "user_id": self.user_id,
+            "usage_window": window_key,
+            "retry_after": retry_after,
+            "token_limit": self.token_limit,
+            "tokens_used": tokens_used,
+            "remaining_budget": remaining_budget,
+        }
 
 
 def estimate_tokens(text: str, *, max_tokens: int) -> int:
     prompt_tokens = max(1, int(len(text) / 4))
-    return prompt_tokens + max(0, max_tokens)
+    completion_cap = int(os.getenv("LLM_BUDGET_COMPLETION_TOKENS", "400"))
+    completion_estimate = max(0, min(max_tokens, completion_cap))
+    return prompt_tokens + completion_estimate
 
 
 def _window_start(window_minutes: int) -> datetime:

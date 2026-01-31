@@ -23,7 +23,8 @@ curl -sS -X POST http://<ALB_DNS_NAME>/triage \
   }' | jq
 ```
 Expected:
-- `hypotheses[]` and `runbook_steps[]` arrays
+- `assistant_message`, `completion_state`
+- optional `next_question` or `tool_calls[]`
 - `metadata.parser_version` and `metadata.parse_confidence`
 - `conversation_id` returned
 
@@ -33,11 +34,12 @@ curl -sS -X POST http://<ALB_DNS_NAME>/explain \
   -H "Content-Type: application/json" \
   -d '{
     "conversation_id": "<conversation_id_from_triage>",
-    "question": "Explain the likely root cause and the safest fix for CI runners."
+    "response": "Explain the likely root cause and the safest fix for CI runners."
   }' | jq
 ```
 Expected:
-- `hypotheses[]` and `runbook_steps[]` arrays
+- `assistant_message`, `completion_state`
+- optional `next_question` or `tool_calls[]`
 - `metadata.prompt_version` and `metadata.model_id`
 - Optional cache markers in `metadata.cache_hit` / `metadata.cache_similarity` on repeat calls
 

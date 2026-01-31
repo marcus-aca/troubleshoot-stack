@@ -11,6 +11,7 @@ class EvidenceMapEntry(BaseModel):
     line_start: int
     line_end: int
     excerpt_hash: str
+    excerpt: Optional[str] = None
 
 
 class TimeWindow(BaseModel):
@@ -41,14 +42,17 @@ class TriageRequest(BaseModel):
     conversation_id: Optional[str] = None
     source: Optional[str] = "user"
     raw_text: str
+    redaction_hits: Optional[int] = None
     timestamp: Optional[datetime] = None
 
 
 class ExplainRequest(BaseModel):
     request_id: Optional[str] = None
     conversation_id: Optional[str] = None
-    question: str
+    response: str
+    redaction_hits: Optional[int] = None
     incident_frame: Optional[IncidentFrame] = None
+    tool_results: Optional[List["ToolResult"]] = None
 
 
 class Hypothesis(BaseModel):
@@ -60,26 +64,45 @@ class Hypothesis(BaseModel):
 
 
 class ToolCall(BaseModel):
-    tool: str
-    call_spec: dict = Field(default_factory=dict)
+    id: str
+    title: str
+    command: str
+    expected_output: Optional[str] = None
 
 
-class RunbookStep(BaseModel):
-    step_number: int
-    description: str
-    command_or_console_path: Optional[str] = None
-    estimated_time_mins: Optional[int] = None
+class ToolResult(BaseModel):
+    id: str
+    output: str
+
+
+class ChatHypothesis(BaseModel):
+    id: str
+    confidence: float
+    explanation: str
 
 
 class CanonicalResponse(BaseModel):
     request_id: str
     timestamp: datetime
-    hypotheses: List[Hypothesis]
-    runbook_steps: List[RunbookStep]
-    proposed_fix: Optional[str] = None
-    risk_notes: List[str] = Field(default_factory=list)
-    rollback: List[str] = Field(default_factory=list)
-    next_checks: List[str] = Field(default_factory=list)
+    assistant_message: str
+    completion_state: str
+    next_question: Optional[str] = None
+    tool_calls: List[ToolCall] = Field(default_factory=list)
+    hypotheses: List[Hypothesis] = Field(default_factory=list)
+    fix_steps: List[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    conversation_id: Optional[str] = None
+
+
+class ChatResponse(BaseModel):
+    request_id: str
+    timestamp: datetime
+    assistant_message: str
+    completion_state: str
+    next_question: Optional[str] = None
+    tool_calls: List[ToolCall] = Field(default_factory=list)
+    hypotheses: List[ChatHypothesis] = Field(default_factory=list)
+    fix_steps: List[str] = Field(default_factory=list)
     metadata: dict = Field(default_factory=dict)
     conversation_id: Optional[str] = None
 
@@ -90,17 +113,41 @@ class StatusResponse(BaseModel):
     timestamp: datetime
 
 
+class BudgetStatusResponse(BaseModel):
+    usage_window: str
+    retry_after: str
+    token_limit: int
+    tokens_used: int
+    remaining_budget: int
+
+
+class MetricsSummaryResponse(BaseModel):
+    timestamp: datetime
+    api_latency_p50_ms: Optional[float] = None
+    api_latency_p95_ms: Optional[float] = None
+    llm_latency_p50_ms: Optional[float] = None
+    llm_latency_p95_ms: Optional[float] = None
+    source: str
+    sample_count: Optional[int] = None
+    cache_hit_rate: Optional[float] = None
+    api_error_rate: Optional[float] = None
+    budget_denied_count: Optional[float] = None
+
+
 class TriageLLMOutput(BaseModel):
     category: str
-    hypotheses: List[Hypothesis]
-    runbook_steps: List[RunbookStep] = Field(default_factory=list)
-    recommended_tool_calls: List[ToolCall] = Field(default_factory=list)
+    assistant_message: str
+    completion_state: str
+    next_question: Optional[str] = None
+    tool_calls: List[ToolCall] = Field(default_factory=list)
+    hypotheses: List[Hypothesis] = Field(default_factory=list)
+    fix_steps: List[str] = Field(default_factory=list)
 
 
 class ExplainLLMOutput(BaseModel):
-    hypotheses: List[Hypothesis]
-    runbook_steps: List[RunbookStep] = Field(default_factory=list)
-    proposed_fix: Optional[str] = None
-    risk_notes: List[str] = Field(default_factory=list)
-    rollback: List[str] = Field(default_factory=list)
-    next_checks: List[str] = Field(default_factory=list)
+    assistant_message: str
+    completion_state: str
+    next_question: Optional[str] = None
+    tool_calls: List[ToolCall] = Field(default_factory=list)
+    hypotheses: List[Hypothesis] = Field(default_factory=list)
+    fix_steps: List[str] = Field(default_factory=list)

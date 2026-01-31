@@ -2,9 +2,9 @@
 Bedrock LLM orchestration (triage + explain) with prompt/version management
 
 ## Summary
-Implement an orchestration layer that uses Bedrock LLMs to perform two staged troubleshooting flows grounded in user-provided logs and tool outputs:
+Implement an orchestration layer that uses Bedrock LLMs to perform state-driven troubleshooting flows grounded in user-provided logs and tool outputs:
 1) Triage: consume the incident frame from the parser (S3) and classify the failure, propose hypotheses, and recommend tool calls.
-2) Explain: use the incident frame, extracted log signals, and tool results to produce the canonical troubleshooting response (ranked hypotheses, runbook steps, fixes, citations).
+2) Explain: use the incident frame, extracted log signals, and tool results to respond to the *latest* user response with context-aware hypotheses and citations (avoid repeating the initial triage unless explicitly asked). Ask one question or request one tool command at a time until the context is sufficient.
 
 Key non-functional goals:
 - Deterministic, JSON-first outputs to reduce parsing errors.
@@ -13,7 +13,7 @@ Key non-functional goals:
 - Strong guardrails: require citations for claims; never invent account-specific identifiers.
 
 Primary deliverables:
-- Two HTTP endpoints: POST /triage and POST /explain with documented schemas; both accept a `conversation_id` to preserve multi-turn context.
+- Two HTTP endpoints: POST /triage and POST /explain with documented schemas; both accept a `conversation_id` to preserve multi-turn context and return `assistant_message`, `completion_state`, and optional `next_question`/`tool_calls`.
 - Prompt/version registry and file layout in repo.
 - LLM client wrapper with retries, backoff, token/cost estimation, tracing.
 - Validators (Pydantic) for inbound requests and LLM outputs.
@@ -21,7 +21,7 @@ Primary deliverables:
 
 ## Design
 High-level architecture
-- API layer: exposes /triage and /explain endpoints, validates input, loads conversation context, orchestrates parsing + tool calls and LLM calls, returns validated structured responses, and persists updated context.
+- API layer: exposes /triage and /explain endpoints, validates input, loads conversation context, orchestrates parsing + tool calls and LLM calls, persists structured responses internally, and returns chat responses to the frontend.
 - Prompt registry: versioned prompt files in repo (e.g., /services/api/prompts/v1/{endpoint}/{prompt-name}.md), and a lightweight runtime registry mapping endpoint -> prompt_version (and optionally prompt filename).
 - LLM Adapter: Bedrock client wrapper providing:
   - generate(model_id, prompt, options) — with retries/backoff, token usage estimation and logging.
@@ -48,11 +48,12 @@ Data flow (per request)
    - Call LLM to classify and propose hypotheses + tool calls (JSON schema).
    - Validate response; store conversation summary + extracted entities; return to caller.
 3. For /explain:
-   - Accept triage frame + optional tool results or run tool calls based on triage recommendations.
+   - Accept triage frame + user-provided tool outputs (`tool_results`) or follow-up answers.
    - Merge with conversation context (prior logs/trace stack, user confirmations, previous hypotheses).
-   - Load explain prompt (from registry).
+  - Load explain prompt (from registry) focused on answering the latest response and requesting one next step if needed.
    - Call LLM to generate structured troubleshoot result (JSON).
-   - Validate, attach citations to log lines/tool outputs, compute confidence scores, return.
+   - Validate, attach citations to log lines/tool outputs, compute confidence scores.
+   - Return structured JSON plus conversational message.
 
 Prompt/versioning rules
 - Each prompt file contains a header with: prompt_version, schema_version, designed_for_endpoint, created_by, created_at, changelog.
@@ -62,14 +63,16 @@ Prompt/versioning rules
 Output schemas (examples)
 - TriageResult (subset of canonical response):
   - category: enum {terraform, eks, alb, iam, other}
+  - assistant_message, completion_state, next_question?, tool_calls[]
   - hypotheses: list of {id, rank, confidence, explanation, citations[]}
-  - recommended_tool_calls: list of {tool, call_spec}
+  - fix_steps[]
   - prompt_version, model_id, token_usage, request_id, conversation_id
 - ExplainResult (canonical response shape):
+  - assistant_message, completion_state, next_question?, tool_calls[]
   - hypotheses: list of {id, rank, confidence, explanation, citations[]}
-  - runbook_steps: list of {step_number, description, command_or_console_path, estimated_time_mins}
-  - proposed_fix, risk_notes[], rollback[], next_checks[], metadata
+  - fix_steps[]
   - prompt_version, model_id, token_usage, request_id, conversation_id
+  - citations include line ranges plus an excerpt for display
 
 Guardrails and generation rules
 - System and prompt templates encode that every specific infrastructure claim (resource name, ARN, account ID, exact IP, etc.) must be backed by a citation from log lines or tool outputs.
@@ -143,7 +146,7 @@ Phase 5 — Testing, QA, and rollout (3–5 days)
 ## Acceptance Criteria
 - Functional
   - POST /triage and POST /explain accept and return JSON matching the Pydantic schemas and JSON Schema exports.
-  - Every response includes fields: prompt_version, prompt_filename (or registry key), model_id, and token_usage.
+  - Every response includes fields: prompt_version, prompt_filename (or registry key), model_id, token_usage, and assistant_message.
   - For triage results: category is one of the allowed enums, entities list present, recommended_tool_calls formatted and actionable.
   - For explain results: hypotheses are ranked, each hypothesis includes confidence (0.0–1.0) and citations array. If any hypothesis lacks citation, it must be annotated citation_missing and have confidence <= 0.3.
 - Quality

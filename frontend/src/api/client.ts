@@ -1,4 +1,16 @@
-import type { CanonicalResponse, ExplainRequest, StatusResponse, TriageRequest } from "./types";
+import type { BudgetStatus, ChatResponse, ExplainRequest, MetricsSummary, StatusResponse, TriageRequest } from "./types";
+
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(message: string, status: number, detail: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 const API_KEY = import.meta.env.VITE_API_KEY ?? "";
@@ -42,19 +54,21 @@ const request = async <T>(path: string, method: string, body?: unknown) => {
 
   if (!response.ok) {
     if (typeof data === "string" && data.trim()) {
-      throw new Error(data.trim());
+      throw new ApiError(data.trim(), response.status, data);
     }
     const message = typeof (data as { detail?: string } | null)?.detail === "string"
       ? (data as { detail: string }).detail
       : `Request failed (${response.status}).`;
-    throw new Error(message);
+    throw new ApiError(message, response.status, data);
   }
 
   return { data: data as T, requestId: responseRequestId };
 };
 
 export const api = {
-  triage: (payload: TriageRequest) => request<CanonicalResponse>("/triage", "POST", payload),
-  explain: (payload: ExplainRequest) => request<CanonicalResponse>("/explain", "POST", payload),
-  status: () => request<StatusResponse>("/status", "GET")
+  triage: (payload: TriageRequest) => request<ChatResponse>("/triage", "POST", payload),
+  explain: (payload: ExplainRequest) => request<ChatResponse>("/explain", "POST", payload),
+  status: () => request<StatusResponse>("/status", "GET"),
+  metricsSummary: () => request<MetricsSummary>("/metrics/summary", "GET"),
+  budgetStatus: () => request<BudgetStatus>("/budget/status", "GET")
 };
