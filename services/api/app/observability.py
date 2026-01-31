@@ -61,6 +61,12 @@ class CloudWatchMetrics:
                 "Value": tokens_total,
             },
             {
+                "MetricName": "TokensPerRequest",
+                "Dimensions": dimensions,
+                "Unit": "Count",
+                "Value": tokens_total,
+            },
+            {
                 "MetricName": "LLMErrors",
                 "Dimensions": dimensions,
                 "Unit": "Count",
@@ -80,6 +86,46 @@ class CloudWatchMetrics:
             },
         ]
         self.client.put_metric_data(Namespace=self.namespace, MetricData=metric_data)
+
+    def put_cache_metrics(self, *, endpoint: str, hit: bool) -> None:
+        if not self.enabled or not self.client:
+            return
+        dimensions = [{"Name": "Endpoint", "Value": endpoint}]
+        metric_data = [
+            {
+                "MetricName": "CacheHitCount",
+                "Dimensions": dimensions,
+                "Unit": "Count",
+                "Value": 1 if hit else 0,
+            },
+            {
+                "MetricName": "CacheMissCount",
+                "Dimensions": dimensions,
+                "Unit": "Count",
+                "Value": 0 if hit else 1,
+            },
+            {
+                "MetricName": "CacheHitRate",
+                "Dimensions": dimensions,
+                "Unit": "None",
+                "Value": 1 if hit else 0,
+            },
+        ]
+        self.client.put_metric_data(Namespace=self.namespace, MetricData=metric_data)
+
+    def put_budget_denied(self) -> None:
+        if not self.enabled or not self.client:
+            return
+        self.client.put_metric_data(
+            Namespace=self.namespace,
+            MetricData=[
+                {
+                    "MetricName": "BudgetDeniedCount",
+                    "Unit": "Count",
+                    "Value": 1,
+                }
+            ],
+        )
 
 
 def log_event(event: str, payload: Dict[str, object]) -> None:

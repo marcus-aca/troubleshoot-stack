@@ -54,8 +54,23 @@ module "ecs_service" {
       BEDROCK_MODEL_ID  = var.bedrock_model_id
       CW_METRICS_ENABLED  = tostring(var.cw_metrics_enabled)
       CW_METRICS_NAMESPACE = var.cw_metrics_namespace
+      BUDGET_ENABLED       = tostring(var.budget_enabled)
+      BUDGET_TABLE_NAME    = var.budget_table_name
+      BUDGET_TOKEN_LIMIT   = tostring(var.budget_token_limit)
+      BUDGET_WINDOW_MINUTES = tostring(var.budget_window_minutes)
+      CORS_ALLOWED_ORIGINS = var.api_cors_allow_origin
     },
-    var.ecs_env_vars
+    var.ecs_env_vars,
+    var.pgvector_enabled ? {
+      PGVECTOR_ENABLED  = "true"
+      PGVECTOR_HOST     = "127.0.0.1"
+      PGVECTOR_PORT     = tostring(var.pgvector_port)
+      PGVECTOR_DB       = var.pgvector_env_vars.POSTGRES_DB
+      PGVECTOR_USER     = var.pgvector_env_vars.POSTGRES_USER
+      PGVECTOR_PASSWORD = var.pgvector_env_vars.POSTGRES_PASSWORD
+    } : {
+      PGVECTOR_ENABLED = "false"
+    }
   )
   task_role_arn         = module.iam.ecs_task_role_arn
   execution_role_arn    = module.iam.ecs_execution_role_arn
@@ -63,6 +78,12 @@ module "ecs_service" {
   alb_listener_port     = var.ecs_alb_listener_port
   log_group_name        = local.ecs_log_group_name
   log_retention_in_days = var.observability_log_retention_in_days
+
+  pgvector_enabled             = var.pgvector_enabled
+  pgvector_image               = var.pgvector_image
+  pgvector_port                = var.pgvector_port
+  pgvector_env_vars            = var.pgvector_env_vars
+  pgvector_env_vars_secret_arns = var.pgvector_env_vars_secret_arns
 }
 
 module "iam" {
@@ -74,7 +95,8 @@ module "iam" {
     module.sessions_table.table_arn,
     module.inputs_table.table_arn,
     module.conversation_events_table.table_arn,
-    module.conversation_state_table.table_arn
+    module.conversation_state_table.table_arn,
+    module.budget_table.table_arn
   ]
   s3_bucket_arns = [
     module.outputs_bucket.bucket_arn,
@@ -119,6 +141,15 @@ module "conversation_state_table" {
   billing_mode = "PAY_PER_REQUEST"
 }
 
+module "budget_table" {
+  source = "./modules/dynamodb"
+
+  table_name   = var.budget_table_name
+  hash_key     = "user_id"
+  range_key    = "usage_window"
+  billing_mode = "PAY_PER_REQUEST"
+}
+
 module "outputs_bucket" {
   source = "./modules/s3"
 
@@ -133,6 +164,46 @@ module "frontend_bucket" {
   lifecycle_rules = []
 }
 
+module "frontend_cloudfront" {
+  source = "./modules/cloudfront"
+
+  enabled                     = var.frontend_cloudfront_enabled
+  bucket_name                 = module.frontend_bucket.bucket_name
+  bucket_arn                  = module.frontend_bucket.bucket_arn
+  bucket_regional_domain_name = module.frontend_bucket.bucket_regional_domain_name
+  default_root_object         = var.frontend_cloudfront_default_root_object
+  price_class                 = var.frontend_cloudfront_price_class
+  custom_domain_name          = var.frontend_cloudfront_custom_domain_name
+  certificate_arn             = var.frontend_cloudfront_certificate_arn
+  hosted_zone_id              = var.frontend_cloudfront_hosted_zone_id
+  minimum_protocol_version    = var.frontend_cloudfront_minimum_tls_version
+}
+
+locals {
+  frontend_custom_domain_requires_cert = (
+    var.frontend_cloudfront_validate_custom_domain &&
+    var.frontend_cloudfront_custom_domain_name != null &&
+    var.frontend_cloudfront_custom_domain_name != "" &&
+    (var.frontend_cloudfront_certificate_arn == null || var.frontend_cloudfront_certificate_arn == "")
+  )
+
+  frontend_cert_requires_domain = (
+    var.frontend_cloudfront_validate_custom_domain &&
+    var.frontend_cloudfront_certificate_arn != null &&
+    var.frontend_cloudfront_certificate_arn != "" &&
+    (var.frontend_cloudfront_custom_domain_name == null || var.frontend_cloudfront_custom_domain_name == "")
+  )
+}
+
+resource "null_resource" "frontend_cloudfront_custom_domain_guard" {
+  lifecycle {
+    precondition {
+      condition     = !(local.frontend_custom_domain_requires_cert || local.frontend_cert_requires_domain)
+      error_message = "frontend_cloudfront_custom_domain_name and frontend_cloudfront_certificate_arn must be provided together when custom domain validation is enabled."
+    }
+  }
+}
+
 module "apigw" {
   source = "./modules/apigw"
 
@@ -145,11 +216,14 @@ module "apigw" {
   stage_name            = var.api_stage_name
   usage_plans           = var.api_usage_plans
   log_retention_in_days = var.observability_log_retention_in_days
+  cors_allow_origin     = var.api_cors_allow_origin
 
   custom_domain_name = var.api_custom_domain_name
   certificate_arn    = var.api_custom_domain_certificate_arn
   hosted_zone_id     = var.api_custom_domain_hosted_zone_id
   base_path          = var.api_custom_domain_base_path
+  endpoint_type      = var.api_endpoint_type
+  security_policy    = var.api_security_policy
 
 }
 

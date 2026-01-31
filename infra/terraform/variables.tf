@@ -143,6 +143,40 @@ variable "ecs_alb_listener_port" {
   default     = 80
 }
 
+variable "pgvector_enabled" {
+  type        = bool
+  description = "Enable pgvector sidecar container for ephemeral semantic caching."
+  default     = false
+}
+
+variable "pgvector_image" {
+  type        = string
+  description = "Container image URI for the pgvector sidecar."
+  default     = "pgvector/pgvector:pg16"
+}
+
+variable "pgvector_port" {
+  type        = number
+  description = "Container port for the pgvector sidecar."
+  default     = 5432
+}
+
+variable "pgvector_env_vars" {
+  type        = map(string)
+  description = "Environment variables for the pgvector sidecar."
+  default = {
+    POSTGRES_DB       = "troubleshooter_cache"
+    POSTGRES_USER     = "postgres"
+    POSTGRES_PASSWORD = "postgres"
+  }
+}
+
+variable "pgvector_env_vars_secret_arns" {
+  type        = list(string)
+  description = "Secret ARNs to inject as environment variables into the pgvector sidecar."
+  default     = []
+}
+
 variable "ecs_task_role_name" {
   type        = string
   description = "IAM task role name for ECS tasks."
@@ -207,6 +241,24 @@ variable "api_custom_domain_base_path" {
   default     = ""
 }
 
+variable "api_endpoint_type" {
+  type        = string
+  description = "API Gateway custom domain endpoint type (REGIONAL or EDGE)."
+  default     = "REGIONAL"
+}
+
+variable "api_security_policy" {
+  type        = string
+  description = "TLS version for the API Gateway custom domain."
+  default     = "TLS_1_2"
+}
+
+variable "api_cors_allow_origin" {
+  type        = string
+  description = "Allowed CORS origin for the API (e.g., https://ts-demo.marcus-aca.com)."
+  default     = ""
+}
+
 variable "session_table_name" {
   type        = string
   description = "DynamoDB table name for sessions."
@@ -243,6 +295,24 @@ variable "budget_table_name" {
   default     = "troubleshooter-budgets"
 }
 
+variable "budget_enabled" {
+  type        = bool
+  description = "Enable budget enforcement in the API service."
+  default     = true
+}
+
+variable "budget_token_limit" {
+  type        = number
+  description = "Token budget per 15-minute window."
+  default     = 20000
+}
+
+variable "budget_window_minutes" {
+  type        = number
+  description = "Window size in minutes for token budget enforcement."
+  default     = 15
+}
+
 variable "uploads_bucket_name" {
   type        = string
   description = "Uploads bucket name."
@@ -265,6 +335,62 @@ variable "frontend_bucket_name" {
   type        = string
   description = "S3 bucket for static frontend assets."
   default     = "troubleshooter-frontend"
+}
+
+variable "frontend_cloudfront_enabled" {
+  type        = bool
+  description = "Enable CloudFront distribution for the frontend."
+  default     = true
+}
+
+variable "frontend_cloudfront_price_class" {
+  type        = string
+  description = "CloudFront price class for the frontend distribution."
+  default     = "PriceClass_100"
+}
+
+variable "frontend_cloudfront_default_root_object" {
+  type        = string
+  description = "Default root object for the frontend distribution."
+  default     = "index.html"
+}
+
+variable "frontend_cloudfront_custom_domain_name" {
+  type        = string
+  description = "Optional custom domain name for the frontend CloudFront distribution."
+  default     = null
+  validation {
+    condition     = var.frontend_cloudfront_custom_domain_name == null || var.frontend_cloudfront_custom_domain_name != ""
+    error_message = "frontend_cloudfront_custom_domain_name must be null or a non-empty string."
+  }
+}
+
+variable "frontend_cloudfront_certificate_arn" {
+  type        = string
+  description = "ACM certificate ARN (us-east-1) for the frontend CloudFront distribution."
+  default     = null
+  validation {
+    condition     = var.frontend_cloudfront_certificate_arn == null || var.frontend_cloudfront_certificate_arn != ""
+    error_message = "frontend_cloudfront_certificate_arn must be null or a non-empty string."
+  }
+}
+
+variable "frontend_cloudfront_hosted_zone_id" {
+  type        = string
+  description = "Route 53 hosted zone ID for the frontend custom domain."
+  default     = null
+}
+
+variable "frontend_cloudfront_minimum_tls_version" {
+  type        = string
+  description = "Minimum TLS version for the frontend CloudFront distribution."
+  default     = "TLSv1.2_2021"
+}
+
+variable "frontend_cloudfront_validate_custom_domain" {
+  type        = bool
+  description = "Require a custom domain to supply a certificate ARN."
+  default     = true
 }
 
 variable "observability_log_retention_in_days" {

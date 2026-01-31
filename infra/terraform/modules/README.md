@@ -9,6 +9,7 @@ This directory contains reusable Terraform modules for the Troubleshoot Stack MV
 - apigw
 - dynamodb
 - s3
+- cloudfront
 - storage
 - observability
 - iam

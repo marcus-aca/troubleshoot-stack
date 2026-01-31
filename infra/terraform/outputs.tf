@@ -29,6 +29,16 @@ output "apigw_custom_domain_certificate_arn" {
   value       = module.apigw.certificate_arn
 }
 
+output "api_cors_allow_origin" {
+  description = "Allowed CORS origin for the API Gateway."
+  value       = var.api_cors_allow_origin
+}
+
+output "api_custom_domain_base_path" {
+  description = "Base path for the API Gateway custom domain."
+  value       = var.api_custom_domain_base_path
+}
+
 output "ecs_alb_dns_name" {
   description = "ECS ALB DNS name."
   value       = module.ecs_service.alb_dns_name
@@ -67,6 +77,16 @@ output "outputs_bucket_name" {
 output "frontend_bucket_name" {
   description = "S3 bucket for frontend assets."
   value       = module.frontend_bucket.bucket_name
+}
+
+output "frontend_cloudfront_domain_name" {
+  description = "CloudFront domain name for the frontend."
+  value       = module.frontend_cloudfront.distribution_domain_name
+}
+
+output "frontend_cloudfront_distribution_id" {
+  description = "CloudFront distribution ID for the frontend."
+  value       = module.frontend_cloudfront.distribution_id
 }
 
 output "sessions_table_name" {

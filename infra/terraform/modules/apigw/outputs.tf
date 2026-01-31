@@ -31,11 +31,7 @@ output "custom_domain_name" {
 
 output "custom_domain_target" {
   description = "Target domain name for the API Gateway custom domain."
-  value = try(
-    aws_api_gateway_domain_name.this[0].regional_domain_name,
-    aws_api_gateway_domain_name.this[0].cloudfront_domain_name,
-    null
-  )
+  value = var.endpoint_type == "EDGE" ? try(aws_api_gateway_domain_name.this[0].cloudfront_domain_name, null) : try(aws_api_gateway_domain_name.this[0].regional_domain_name, null)
 }
 
 output "certificate_arn" {

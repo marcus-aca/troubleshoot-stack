@@ -2,12 +2,13 @@ locals {
   spec_body     = templatefile(var.openapi_spec_path, {
     alb_dns_name      = var.alb_dns_name
     alb_listener_port = var.alb_listener_port
+    cors_allow_origin = var.cors_allow_origin
   })
   spec_hash     = sha256(local.spec_body)
   stage_log_key = replace(var.stage_name, "/[^a-zA-Z0-9-_]/", "-")
   rest_api_name = coalesce(var.rest_api_name, "troubleshooter-${local.stage_log_key}")
   domain_enabled = var.custom_domain_name != null
-  create_cert    = local.domain_enabled && var.certificate_arn == null
+  create_cert    = local.domain_enabled && var.certificate_arn == null && !local.is_edge
   is_regional    = upper(var.endpoint_type) == "REGIONAL"
   is_edge        = upper(var.endpoint_type) == "EDGE"
   access_log_group_name = coalesce(var.access_log_group_name, "/aws/apigateway/${local.rest_api_name}-${local.stage_log_key}")
@@ -174,7 +175,20 @@ resource "aws_api_gateway_base_path_mapping" "this" {
   api_id      = aws_api_gateway_rest_api.this.id
   stage_name  = aws_api_gateway_stage.this.stage_name
   domain_name = aws_api_gateway_domain_name.this[0].domain_name
-  base_path   = var.base_path
+  base_path   = var.base_path != "" ? var.base_path : null
+}
+
+resource "aws_route53_record" "custom_domain" {
+  count   = local.domain_enabled && var.hosted_zone_id != null ? 1 : 0
+  zone_id = var.hosted_zone_id
+  name    = var.custom_domain_name
+  type    = "A"
+
+  alias {
+    name                   = local.is_edge ? aws_api_gateway_domain_name.this[0].cloudfront_domain_name : aws_api_gateway_domain_name.this[0].regional_domain_name
+    zone_id                = local.is_edge ? aws_api_gateway_domain_name.this[0].cloudfront_zone_id : aws_api_gateway_domain_name.this[0].regional_zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_acm_certificate" "this" {

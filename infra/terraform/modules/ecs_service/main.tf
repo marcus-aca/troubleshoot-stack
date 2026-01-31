@@ -111,45 +111,92 @@ resource "aws_ecs_task_definition" "this" {
   task_role_arn            = var.task_role_arn
   execution_role_arn       = var.execution_role_arn
 
-  container_definitions = jsonencode([
-    {
-      name  = "api"
-      image = var.container_image
-      portMappings = [
-        {
-          containerPort = var.port
-          protocol      = "tcp"
+  container_definitions = jsonencode(concat(
+    [
+      {
+        name  = "api"
+        image = var.container_image
+        portMappings = [
+          {
+            containerPort = var.port
+            protocol      = "tcp"
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = local.log_group_name
+            awslogs-region        = data.aws_region.current.name
+            awslogs-stream-prefix = "api"
+          }
         }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = local.log_group_name
-          awslogs-region        = data.aws_region.current.name
-          awslogs-stream-prefix = "api"
+        environment = [
+          for key, value in var.env_vars : {
+            name  = key
+            value = value
+          }
+        ]
+        dependsOn = var.pgvector_enabled ? [
+          {
+            containerName = "pgvector"
+            condition     = "HEALTHY"
+          }
+        ] : []
+        healthCheck = {
+          command     = ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:${var.port}/status')\""]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 10
         }
+        secrets = [
+          for arn in var.env_vars_secret_arns : {
+            name      = basename(arn)
+            valueFrom = arn
+          }
+        ]
       }
-      environment = [
-        for key, value in var.env_vars : {
-          name  = key
-          value = value
+    ],
+    var.pgvector_enabled ? [
+      {
+        name  = "pgvector"
+        image = var.pgvector_image
+        portMappings = [
+          {
+            containerPort = var.pgvector_port
+            protocol      = "tcp"
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = local.log_group_name
+            awslogs-region        = data.aws_region.current.name
+            awslogs-stream-prefix = "pgvector"
+          }
         }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:${var.port}/status')\""]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 10
+        environment = [
+          for key, value in var.pgvector_env_vars : {
+            name  = key
+            value = value
+          }
+        ]
+        healthCheck = {
+          command     = ["CMD-SHELL", "pg_isready -U ${var.pgvector_env_vars.POSTGRES_USER} -d ${var.pgvector_env_vars.POSTGRES_DB} -h 127.0.0.1"]
+          interval    = 30
+          timeout     = 5
+          retries     = 3
+          startPeriod = 10
+        }
+        secrets = [
+          for arn in var.pgvector_env_vars_secret_arns : {
+            name      = basename(arn)
+            valueFrom = arn
+          }
+        ]
       }
-      secrets = [
-        for arn in var.env_vars_secret_arns : {
-          name      = basename(arn)
-          valueFrom = arn
-        }
-      ]
-    }
-  ])
+    ] : []
+  ))
 }
 
 resource "aws_ecs_service" "this" {

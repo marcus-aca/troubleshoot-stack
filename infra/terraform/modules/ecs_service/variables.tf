@@ -106,3 +106,37 @@ variable "log_retention_in_days" {
   description = "Retention period in days for the ECS log group."
   default     = 14
 }
+
+variable "pgvector_enabled" {
+  type        = bool
+  description = "Enable a pgvector sidecar container for ephemeral semantic caching."
+  default     = false
+}
+
+variable "pgvector_image" {
+  type        = string
+  description = "Container image URI for the pgvector sidecar."
+  default     = "pgvector/pgvector:pg16"
+}
+
+variable "pgvector_port" {
+  type        = number
+  description = "Container port for the pgvector sidecar."
+  default     = 5432
+}
+
+variable "pgvector_env_vars" {
+  type        = map(string)
+  description = "Environment variables for the pgvector sidecar."
+  default = {
+    POSTGRES_DB       = "troubleshooter_cache"
+    POSTGRES_USER     = "postgres"
+    POSTGRES_PASSWORD = "postgres"
+  }
+}
+
+variable "pgvector_env_vars_secret_arns" {
+  type        = list(string)
+  description = "Secret ARNs to inject as environment variables into the pgvector sidecar."
+  default     = []
+}

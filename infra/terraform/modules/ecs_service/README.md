@@ -13,6 +13,11 @@ Creates an ECS Fargate service with optional load balancer.
 - `port`
 - `desired_count`
 - `env_vars_secret_arns`
+- `pgvector_enabled`
+- `pgvector_image`
+- `pgvector_port`
+- `pgvector_env_vars`
+- `pgvector_env_vars_secret_arns`
 - `task_role_arn`
 - `execution_role_arn`
 - `alb_enabled`

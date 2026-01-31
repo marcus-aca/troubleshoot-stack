@@ -1,292 +1,190 @@
 # Section
-Guardrails: rate limits, per-user budgets, and caching
+Guardrails (MVP): rate limits, per-user budgets, and ephemeral pgvector caching
 
 ## Summary
-This section defines guardrails to control cost and latency for LLM usage: (1) API-level rate limiting via API Gateway usage plans, (2) per-user daily budget enforcement backed by DynamoDB, and (3) semantic response caching for idempotent endpoints (primarily /explain) using OpenSearch Serverless vector search. The plan includes concrete schemas, middleware behavior, error responses, monitoring, and an ordered implementation plan with risks and dependencies called out.
+This MVP keeps guardrails small and demo-focused: (1) API-level rate limiting via API Gateway usage plans, (2) a budget cap in DynamoDB (single shared user, 15-minute window), and (3) an **ephemeral semantic cache** using pgvector running alongside the API in ECS. The cache is in-memory only (no persistence) so it is easy to explain and cheap to run while still showcasing semantic search.
 
 Goals:
 - Prevent runaway cost and abuse.
 - Provide predictable latency and cost visibility.
-- Reuse identical LLM responses to reduce calls and cost.
+- Demonstrate semantic search + caching in a cloud-native, DevOps-friendly way.
 - Provide clear, machine-readable error responses when limits are hit.
 Non-goals:
-- No enterprise billing or invoicing system in MVP.
-- No cross-tenant caching without explicit privacy_scope opt-in.
+- No enterprise billing or invoicing system.
+- No persistent vector store or cross-task cache consistency.
+- No complex cache stampede protection or multi-tier plans.
 
 ## Design
 
 High-level components
-- API Gateway usage plans + per-API-key throttles and quotas (steady + burst + daily quota).
-- Application middleware (in the service or Lambda) that:
+- API Gateway usage plan + per-API-key throttles.
+- Lightweight middleware in the API service that:
   - resolves user identity,
-  - checks and enforces per-user budget,
-  - checks/updates cache,
-  - estimates cost before invoking LLM and reconciles after,
+  - enforces a per-user budget,
+  - checks/updates the semantic cache,
   - records usage and emits metrics.
-- DynamoDB table:
-  - llm_usage — per-user daily usage records (cost & tokens).
-- OpenSearch Serverless vector index:
-  - semantic cache for sanitized inputs and cached response metadata.
-- CloudWatch custom metrics and alarms for budgeting and cache performance.
+- DynamoDB table: `llm_usage` — per-user usage records.
+- **ECS task with a pgvector container** running next to the API container (ephemeral cache).
+- CloudWatch metrics and simple alarms.
 
 Rate limiting (API Gateway)
-- Usage plan per API key (or per plan tier). Controls:
-  - Throttle: steady rate (requests/second) and burst capacity.
-  - Quota: requests/day for demo or trial tiers.
-- Example defaults (tunable per environment):
-  - Demo: steady 5 RPS, burst 10, quota 5,000/day.
-  - Production base-tier: steady 20 RPS, burst 50, quota none (or a large quota).
-- API Gateway rejects requests beyond throttle/quota with 429 and standard Retry-After.
+- Single usage plan per environment:
+  - Throttle: steady rate and burst.
+- Example defaults (tunable):
+  - Demo: 100 RPS, burst 200 (current Terraform defaults).
+- API Gateway rejects overages with 429 + Retry-After.
 
-Per-user budget caps (DynamoDB)
-- Table: llm_usage
-  - Recommended schema (robust vs reset logic): use composite key (PK: user_id, SK: usage_date YYYY-MM-DD) to avoid manual reset jobs and reduce race conditions. This is preferred to a single-row-per-user with reset_at.
-  - Attributes:
-    - user_id (PK)
-    - usage_date (SK) — YYYY-MM-DD (UTC)
-    - tokens_used (Number)
-    - cost_estimate (Number) — USD or chosen unit
-    - last_updated_at (ISO timestamp)
-    - budget_daily (Number) — optional, per-user quota
-  - Access pattern: read-and-conditional-update the current day's row with a single UpdateItem that checks (tokens_used + estimated_tokens <= budget_tokens) or (cost_estimate + estimated_cost <= budget_daily). Use ConditionalExpression to enforce atomicity.
-  - Provisioning: On-Demand billing for flexibility.
+Budget caps (MVP: single shared user, 15-minute window)
+- **MVP choice:** no auth in demo, so all traffic is treated as a single shared user. Budget is enforced per 15-minute window to limit blast radius without user management.
+- Table: `llm_usage`
+  - Schema: PK `user_id`, SK `usage_window` (UTC window key, e.g., `2026-01-30T12:00Z` for 15-minute buckets).
+  - Attributes: `tokens_used`, `last_updated_at`.
+  - Access: one conditional `UpdateItem` that increments totals only if totals remain under a window cap.
 - Middleware flow:
-  - Resolve user_id from API key or authenticated token.
-  - Compute estimated cost and tokens from request (based on prompt max_tokens, model pricing).
-  - Attempt a conditional UpdateItem (increment tokens_used & cost_estimate) only if the increment keeps totals <= budget. If success, proceed.
-  - If the conditional update fails, reject with budget-exceeded error.
-  - After the LLM call completes, reconcile by writing the actual tokens and cost (UpdateItem) — if actual > estimated, the entry will reflect true usage (no rollback to the LLM call).
-  - Optional: allow short negative temporary overshoot for better UX, but flag user and emit metric; or strictly deny if actual > budget — choose policy and reflect in acceptance criteria.
+  - Use `user_id = "demo"` for all requests.
+  - Estimate tokens from prompt size and `max_tokens`.
+  - Conditional update: if over cap, return budget-exceeded error.
+  - No reconciliation in MVP; keep it simple and document as future improvement.
 
-Caching (semantic cache in OpenSearch Serverless)
-- Vector index: semantic_cache
-  - Document schema (example):
-    - cache_id (String) — unique id for the cached item (UUID or hash)
-    - endpoint (Keyword) — e.g., /explain
-    - embedding (Vector) — embedding of sanitized input + normalized context
-    - response_ref (String) — response payload (compact) or S3 key if large
-    - created_at (ISO timestamp)
-    - expires_at (ISO timestamp)
-    - prompt_version (Keyword)
-    - model_id (Keyword)
-    - privacy_scope (Keyword) — "public" | "team" | "private"
-    - tool_result_fingerprint (Keyword)
-  - Sanitization & privacy:
-    - Only embed and cache sanitized input (redacted PII + secrets). Never embed raw logs with secrets.
-    - Default: do not cache private uploads unless explicit opt-in flag is set and privacy_scope permits.
-  - Cache lookup:
-    - Embed sanitized input + normalized context.
-    - Query OpenSearch kNN for top_k neighbors filtered by endpoint, prompt_version, model_id, and privacy_scope.
-    - Accept a hit only if similarity >= threshold and expires_at > now.
-  - When to cache:
-    - Cache POST /explain responses when sanitized input is available and privacy_scope is eligible.
-  - Size limits:
-    - If response payload is large, store the full response in S3 and keep response_ref as the S3 key + checksum.
-  - Expiration:
-    - Use expires_at and an index lifecycle policy (or scheduled cleanup) to delete expired cache entries. Treat expired entries as misses even if not yet deleted.
-  - Stampede prevention:
-    - Best-effort: if cache miss, proceed to LLM call and write cache on success. (Optional later: introduce a short-lived DynamoDB lock keyed by a hash of sanitized input + prompt_version.)
+Ephemeral semantic caching (pgvector in ECS)
+- **Deployment model:** pgvector runs as a second container in the same ECS task definition as the API. This avoids extra networking and makes the cache accessible via `localhost`.
+- **Persistence:** none. No EFS/EBS. Cache is reset on task restart or deploy.
+- **Why this fits MVP:** shows real semantic search without standing up managed vector databases.
+- **Bootstrap on API startup (implemented):**
+  - API runs `CREATE EXTENSION vector`, creates `cache_entries`, and creates an HNSW index.
+  - Intended for ephemeral cache; schema is rebuilt at task start.
+- **Schema (implemented):**
+  - `cache_entries(id uuid, embedding vector(256), response jsonb, created_at, expires_at)`
+  - HNSW index on `embedding` for fast ANN search (small datasets only).
+- **Embedding model (implemented):**
+  - Bedrock `amazon.titan-embed-text-v2:0` with `dimensions=256` and `normalize=true`.
+- **Cache key (implemented):**
+  - `question`, `incident_frame.primary_error_signature`, `incident_frame.services`, `incident_frame.infra_components`.
+  - Does **not** include conversation history.
+- **Cache lookup flow (implemented):**
+  - Sanitize key → embed → kNN lookup → accept if similarity >= 0.95 and `expires_at` > now.
+  - Cache is only used for `/explain` (not `/triage`).
+- **Cache write (implemented):**
+  - Sanitize key → embed → store embedding + full response inline as JSONB.
+- **Sanitization (implemented):**
+  - Redacts emails, UUIDs, IPs, long hex strings, AWS access keys, bearer tokens, and common secret fields (password/token/api_key).
+  - Normalizes whitespace.
+- **Security note:** demo-only password in env vars; production would use Secrets Manager or RDS/Aurora.
+- **Configuration (implemented via env vars):**
+  - `PGVECTOR_ENABLED`, `PGVECTOR_HOST`, `PGVECTOR_PORT`
+  - `PGVECTOR_DB`, `PGVECTOR_USER`, `PGVECTOR_PASSWORD`
+  - `PGVECTOR_SIMILARITY_THRESHOLD`, `PGVECTOR_TTL_SECONDS`
 
 Error response shapes
 - Rate limit exceeded (API Gateway): HTTP 429, body:
   - { "error": "rate_limited", "message": "Rate limit exceeded", "retry_after": seconds }
-- Budget exceeded (middleware): HTTP 402 (Payment Required) or HTTP 429 with code — choose 402 for explicit budget/billing signaling:
+- Budget exceeded (middleware): HTTP 402 (Payment Required) to signal budget:
   - { "error": "budget_exceeded", "message": "Daily budget exceeded", "remaining_budget": 0, "retry_after": "2026-01-29T00:00:00Z" }
-- Budget denied (generic): HTTP 429 if you prefer uniform 429s; document which status is used in API reference.
+- Budget denied (generic alternative): HTTP 429 if you prefer uniform 429s.
 
 Monitoring & metrics
-- CloudWatch custom metrics (per region / per stage):
-  - BudgetDeniedCount (Count)
-  - CacheHitCount (Count)
-  - CacheMissCount (Count)
-  - CacheHitRate (calculated or emitted as metric)
-  - CostPerRequest (Distribution)
-  - TokensPerRequest (Distribution)
-- Alarms:
-  - BudgetDeniedCount > threshold -> paging/alerting.
-  - CacheHitRate < expected -> investigate.
-  - Sudden increase in CostPerRequest or TokensPerRequest.
+- CloudWatch metrics:
+  - BudgetDeniedCount (planned; emit when wiring metrics)
+  - CacheHitCount / CacheMissCount (emitted on /explain lookups)
+  - TokensPerRequest
+- Simple alarms:
+  - BudgetDeniedCount spike (planned)
+  - CacheHitRate drop
 
 ## Implementation Steps
-Ordered actionable steps with notes for owners and priorities. Assume service code lives in repository "service" and uses AWS Lambda or containerized application behind API Gateway.
+Ordered actionable steps with notes for owners and priorities. Assume service code lives in repository "service" and uses AWS Lambda or a containerized application behind API Gateway.
 
-1) Provision DynamoDB tables (Infra — IaC)
-   - Create llm_usage table:
+1) Provision DynamoDB table (Infra — IaC) [implemented]
+   - Create `llm_usage`:
      - Partition key: user_id (String)
-     - Sort key: usage_date (String, YYYY-MM-DD)
+     - Sort key: usage_window (String, 15-minute buckets)
      - BillingMode: PAY_PER_REQUEST (on-demand)
-     - TTL: none (we retain usage records for auditing; optionally set TTL after 30-90 days)
+     - TTL: optional (retain 30-90 days if desired)
      - IAM role: grant app read/write access
-   - Create OpenSearch Serverless collection + vector index:
-     - Collection: semantic-cache
-     - Index: semantic_cache (vector dimension aligned to embedding model)
-     - Access policy scoped to ECS task role
-     - Optional: index lifecycle policy to delete expired docs
    - Estimated time: 1-2 hours
 
-2) Define API Gateway usage plans (Infra)
-   - Create usage plan(s) for demo and production tiers.
-   - Configure per-API-key throttle & quota:
-     - Demo plan: throttle=5 RPS, burst=10, quota=5,000/day
-     - Prod default plan: throttle=20 RPS, burst=50, quota=None
-   - Associate API keys to plans; ensure stage-level mapping.
+2) Define API Gateway usage plan (Infra) [implemented]
+   - Create one usage plan per environment.
+   - Configure throttle (demo):
+     - throttle=100 RPS, burst=200
+   - Associate API keys to plan; ensure stage-level mapping.
    - Estimated time: 1-2 hours
 
-3) Implement user identity resolution & API key mapping (Backend)
-   - Middleware function: resolve user_id from:
+3) Add pgvector cache container to ECS task (Infra) [implemented]
+   - Reuse the existing ECS module and add an optional pgvector container next to the API.
+   - Configure env vars (demo defaults):
+     - POSTGRES_DB=troubleshooter_cache
+     - POSTGRES_USER=postgres
+     - POSTGRES_PASSWORD=postgres
+   - Expose `5432` **only inside the task** (no public ingress).
+   - Estimated time: 1-2 hours
+
+4) Implement user identity resolution & API key mapping (Backend) [planned]
+   - Middleware: resolve user_id from:
      - Authenticated JWT token subject (preferred)
      - API key mapping table for API Gateway keys (fallback for dev/demo)
      - For dev only: allow header X-Dev-User-Id when running in dev mode
-   - Ensure mapping stored in a secure store (Cognito, Secrets Manager, or a secure mapping table with least privileges).
+   - Store mapping in a secure store with least privileges.
    - Estimated time: 2-4 hours
 
-4) Implement per-request budget check middleware (Backend)
+5) Implement per-request budget check middleware (Backend) [implemented]
    - Pseudocode:
-     - estimated_tokens, estimated_cost = estimate_from_request(req)
-     - today = UTC date YYYY-MM-DD
+     - estimated_tokens = estimate_from_request(req)
+     - window = UTC 15-minute bucket key (e.g., YYYY-MM-DDTHH:MMZ)
      - Attempt conditional UpdateItem:
-       - Key: { user_id, usage_date: today }
-       - UpdateExpression: SET tokens_used = if_not_exists(tokens_used, :zero) + :est_tokens, cost_estimate = if_not_exists(cost_estimate, :zero) + :est_cost, last_updated_at = :now
-       - ConditionExpression: (if budget defined) cost_estimate + :est_cost <= :budget_daily AND tokens_used + :est_tokens <= :token_budget
-       - ExpressionAttributeValues: provide :est_tokens, :est_cost, :budget_daily
+       - Key: { user_id: "demo", usage_window: window }
+       - UpdateExpression: SET tokens_used = if_not_exists(tokens_used, :zero) + :est_tokens, last_updated_at = :now
+       - ConditionExpression: tokens_used + :est_tokens <= :token_budget
+       - ExpressionAttributeValues: provide :est_tokens, :token_budget
      - If ConditionalCheckFailed -> return HTTP 402 { error: "budget_exceeded" }
      - On success -> proceed to cache-check and LLM call
-   - Reconciliation after LLM call:
-     - UpdateItem to add actual tokens and actual cost (difference between estimated and actual). This UpdateItem may be unconditional (it will simply increment).
-     - If actual > estimated and pushes totals over budget, policy choices:
-       - Allow but emit metric BudgetOvershootCount (recommended initial behavior).
-       - Or immediately block further requests (set a flag or rely on next request's conditional update to fail) — document chosen behavior.
-   - Concurrency: use a single conditional UpdateItem per request for atomicity; this prevents multiple concurrent requests from collectively exceeding budget if condition checks current totals.
-   - Estimated time: 6-10 hours (implementation + tests)
+   - Concurrency: use a single conditional UpdateItem per request for atomicity.
+   - Estimated time: 4-6 hours (implementation + tests)
 
-5) Implement caching layer (Backend)
-   - Normalization & embedding:
-     - Sanitize input (redact secrets/PII), then normalize (canonical ordering, whitespace, stable identifiers).
-     - Build embedding from sanitized input + normalized context (triage frame + tool_result_fingerprint).
-   - Cache lookup flow:
-     - If privacy_scope == "private" and user did not opt-in => skip cache.
-     - Query OpenSearch Serverless kNN for top_k neighbors filtered by endpoint, prompt_version, model_id, and privacy_scope.
-     - If best hit similarity >= threshold and expires_at > now -> CacheHitCount++ and return response (resolve response_ref or fetch from S3 if needed).
-     - If miss -> proceed to LLM call.
-   - When writing cache:
-     - Store embedding + metadata in OpenSearch.
-     - If response payload large, upload to S3 and store response_ref as s3://... + checksum.
-     - Set expires_at = now + TTL (default 24 hours; configurable per endpoint).
-   - Estimated time: 6-12 hours
+6) Implement semantic cache flow (Backend) [implemented]
+   - Use Bedrock embeddings (amazon.titan-embed-text-v2:0, 256 dims) and kNN lookup.
+   - Threshold: 0.95 (configurable via env).
+   - Cache only `/explain`; store full response JSONB.
+   - Estimated time: 4-8 hours
 
-6) Emit metrics and create dashboards & alarms (Infra + Backend)
-   - Emit custom CloudWatch metrics at these points:
+7) Emit metrics and create dashboards & alarms (Infra + Backend) [partial]
+   - Emit CloudWatch metrics at these points:
      - On budget deny: BudgetDeniedCount
+     - After each request: TokensPerRequest
      - On cache hit/miss: CacheHitCount, CacheMissCount
-     - After each request: CostPerRequest, TokensPerRequest
-     - On LLM invocation success/failure: LLMCallSuccess/Failure
-   - Create a dashboard showing CacheHitRate (CacheHitCount/(Hit+Miss)), BudgetDenied trend, CostPerRequest percentile.
+   - Create a dashboard showing CacheHitRate, BudgetDenied trend, TokensPerRequest.
    - Create CloudWatch alarms:
      - BudgetDeniedCount > X in 5 minutes -> PagerDuty
      - CacheHitRate < threshold -> Slack alert
-   - Estimated time: 4-8 hours
+   - Estimated time: 2-4 hours
 
-7) Tests and validation (QA)
+8) Tests and validation (QA) [planned]
    - Unit tests for middleware with mocked DynamoDB and LLM responses.
    - Integration tests:
      - Simulate concurrent requests to the same user that approach/exceed budget to verify conditional update prevents overspend.
-     - Verify cache hits return identical responses and S3 fallback works.
+     - Verify cache hits return identical responses.
      - Load test to validate API Gateway throttle behavior and end-to-end system behavior.
-   - Acceptance tests listed below.
-   - Estimated time: 8-16 hours
+   - Estimated time: 6-10 hours
 
-8) Rollout strategy
+9) Rollout strategy
    - Deploy to staging first.
    - Monitor metrics, especially BudgetDeniedCount and CacheHitRate.
-   - Start with conservative budgets and longer TTLs in staging, then tighten for production.
-   - For users with existing usage records, backfill their current day's usage if migrating to the new schema.
+   - Start with conservative budgets and short TTLs in staging, then tune for production.
 
 ## Risks
 - Race conditions causing budget overspend:
   - Mitigation: use DynamoDB conditional UpdateItem that atomically enforces budget constraints. Use composite PK (user_id + date) to avoid daily reset races.
 - Clock skew and reset timing:
-  - Use UTC dates consistently. For reset logic, using date as SK avoids needing reset_at field.
+  - Use UTC windows consistently. For reset logic, using window key avoids needing reset_at field.
 - DynamoDB conditional checks may generate throttling under heavy concurrent load:
   - Mitigation: on-demand capacity, exponential backoff in client, consider sharding or token-bucket at app layer if necessary.
-- Cache stampede (many concurrent misses):
-  - Mitigation: best-effort caching; optionally add a short-lived DynamoDB lock keyed by hash(sanitized_input + prompt_version) if needed.
 - Privacy leakage by caching user private uploads:
   - Mitigation: default to not caching private content; require explicit opt-in flag and clear UI/terms; store privacy_scope in cache entry.
-- Large responses exceeding DynamoDB item size:
-  - Mitigation: store responses in S3 and reference from cache table.
-- Incorrect cost estimates leading to unexpected denials or overspend:
-  - Mitigation: conservative estimate policy (e.g., estimate = max_tokens + model overhead). Reconcile after call and emit overshoot metrics. Optionally allow small overshoot threshold.
+- Ephemeral cache resets:
+  - Mitigation: document that cache is best-effort for MVP; rebuild via new requests.
 - Operational complexity and alert fatigue:
   - Mitigation: tune alarms and thresholds before production.
 
-## Dependencies
-- AWS services:
-  - API Gateway (usage plans, API keys)
-  - DynamoDB (llm_usage)
-  - OpenSearch Serverless (semantic cache)
-  - S3 (optional for large cached responses)
-  - CloudWatch (metrics, logs, alarms, dashboards)
-  - IAM roles with least privilege for app to access DynamoDB/S3/CloudWatch
-  - (Optional) Cognito or AuthN provider for user identity
-- Application:
-  - LLM provider client (OpenAI, Anthropic, etc.) and pricing/usage model to estimate tokens/cost
-  - Application runtime (Lambda or container) with middleware support
-- Infra tooling:
-  - IaC (CloudFormation / Terraform / CDK) to provision DynamoDB tables, API Gateway usage plans, alarms, and IAM policies
-- Observability:
-- Logging library integrated with structured logs to capture cache_hit, similarity_score, cache_id, user_id (anonymized if needed), request_id
-- Optional:
-  - Secrets Manager or parameter store for API key mapping; PagerDuty/Slack for alerts
-
-## Acceptance Criteria
-- Rate limiting:
-  - API Gateway usage plan rejects requests above configured throttle/quota with HTTP 429 and Retry-After header.
-  - Demonstrated via load test: when exceeding throttle, API Gateway returns 429 for excess requests.
-- Per-user budget enforcement:
-  - A user attempting an action that would exceed their daily budget receives a clear budget-exceeded response:
-    - HTTP 402 (Payment Required) with JSON { error: "budget_exceeded", message, remaining_budget, reset_at } OR documented alternative (HTTP 429) if chosen.
-  - Conditional update logic prevents concurrent requests from causing spend above budget in tested concurrent scenarios.
-  - Post-call reconciliation correctly records actual tokens/cost and metrics reflect true totals.
-- Caching:
-  - Cache hit rate is available in CloudWatch metrics (CacheHitCount, CacheMissCount, calculated CacheHitRate).
-  - Repeated semantically similar /explain requests (same endpoint + prompt_version + tool_result_fingerprint with high similarity) yield cache hits and faster response times vs cold LLM calls.
-  - Private uploads are not cached unless user explicitly opts in; opt-in requests are cached only if privacy_scope indicates consent.
-  - Large responses are successfully stored in S3 and retrieved via cache entries when needed.
-- Monitoring and alerts:
-  - CloudWatch dashboard shows BudgetDeniedCount, CacheHitRate, CostPerRequest.
-  - Alarm fires when BudgetDeniedCount exceeds configured threshold in given time window.
-- Operational:
-  - Logs include cache_id, cache hit/miss, similarity_score, user_id (or masked), estimated_cost, actual_cost, and request_id for traceability.
-  - Documentation updated: API reference includes error shapes and guidance on budgets, caching opt-in, and rate limiting behavior.
-
-## Outcomes
-- Predictable spend controls with enforceable budgets and rate limits.
-- Reduced latency/cost for repeated queries via semantic caching.
-- Clear, machine-readable errors and metrics for operational oversight.
-
-## Decisions
-- **Budget enforcement**: DynamoDB conditional updates per user/day.
-- **Rate limiting**: API Gateway usage plans per API key.
-- **Caching**: OpenSearch Serverless semantic cache on sanitized inputs only.
-
-## Deliverables
-- llm_usage DynamoDB table and budget enforcement middleware.
-- API Gateway usage plans + quotas configured per environment.
-- Semantic cache index + S3 fallback for large responses.
-- CloudWatch metrics and alerts for budget and cache behavior.
-
-## Implementation tasks
-Concrete task list (assignable, PR-sized items)
-1. Create llm_usage DynamoDB table (owner: infra) — 0.5 day
-2. Provision OpenSearch Serverless collection + vector index (owner: infra) — 0.5–1 day
-3. Add API Gateway usage plans and map API keys (owner: infra) — 0.5 day
-4. Implement budget middleware + reconciliation (owner: backend) — 1–2 days
-5. Implement semantic cache with S3 fallback (owner: backend) — 1–2 days
-6. Emit metrics + dashboards/alarms (owner: platform) — 0.5–1 day
-7. Integration + concurrency tests (owner: QA) — 1 day
-
-Notes / recommendations
-- Prefer composite key (user_id + usage_date) for llm_usage to simplify resets and auditing. If you must keep a single-row-per-user model with reset_at, include a migration path and implement atomic reset logic (transactional or double-checked conditional writes).
-- Default cache TTL: 24 hours for /explain (tune per use-case). Allow per-endpoint TTL override via configuration.
-- Start with conservative budget enforcement (deny if estimated would exceed budget) and allow a "grace overshoot" policy if you want a smoother UX; ensure overshoots are visible in metrics and backfilled billing.
-- Document precisely in your API docs which endpoints are cached and how to opt-in for private content caching.
+## Rationale & future work
+- **Why single shared user now:** the demo has no authentication, so per-user budgeting would be artificial. A shared 15-minute window cap is simple to explain and still prevents runaway cost.
+- **Future work:** add auth (JWT/Cognito) and map budgets by user_id (or org_id). Replace the shared `demo` key with authenticated subject + daily budget rows, and optionally support plan tiers.

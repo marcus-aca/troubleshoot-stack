@@ -89,3 +89,9 @@ variable "security_policy" {
   description = "TLS version for the custom domain."
   default     = "TLS_1_2"
 }
+
+variable "cors_allow_origin" {
+  type        = string
+  description = "Allowed CORS origin for API Gateway responses."
+  default     = ""
+}
