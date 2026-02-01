@@ -3,7 +3,10 @@
   "info": {
     "title": "Troubleshoot Stack API",
     "version": "0.1.0",
-    "description": "MVP API for triage and explain workflows."
+    "description": "MVP API for triage and explain workflows.",
+    "license": {
+      "name": "Apache-2.0"
+    }
   },
   "servers": [
     {
@@ -191,6 +194,9 @@
               }
             },
             "content": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         },
         "x-amazon-apigateway-integration": {
@@ -211,7 +217,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "options_triage"
       }
     },
     "/explain": {
@@ -383,6 +390,9 @@
               }
             },
             "content": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         },
         "x-amazon-apigateway-integration": {
@@ -403,7 +413,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "options_explain"
       }
     },
     "/status": {
@@ -459,6 +470,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         }
       },
@@ -485,6 +499,9 @@
               }
             },
             "content": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         },
         "x-amazon-apigateway-integration": {
@@ -505,7 +522,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "options_status"
       }
     },
     "/metrics/summary": {
@@ -561,6 +579,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         }
       },
@@ -587,6 +608,9 @@
               }
             },
             "content": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         },
         "x-amazon-apigateway-integration": {
@@ -607,7 +631,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "options_metrics_summary"
       }
     },
     "/budget/status": {
@@ -663,6 +688,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         }
       },
@@ -689,6 +717,9 @@
               }
             },
             "content": {}
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
           }
         },
         "x-amazon-apigateway-integration": {
@@ -709,7 +740,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "options_budget_status"
       }
     }
   },
@@ -911,34 +943,6 @@
             "additionalProperties": true
           },
           "conversation_id": {
-            "type": "string"
-          }
-        }
-      },
-      "EvidenceMapEntry": {
-        "type": "object",
-        "required": [
-          "source_type",
-          "source_id",
-          "line_start",
-          "line_end",
-          "excerpt_hash"
-        ],
-        "properties": {
-          "source_type": {
-            "type": "string",
-            "description": "log|tool"
-          },
-          "source_id": {
-            "type": "string"
-          },
-          "line_start": {
-            "type": "integer"
-          },
-          "line_end": {
-            "type": "integer"
-          },
-          "excerpt_hash": {
             "type": "string"
           }
         }
