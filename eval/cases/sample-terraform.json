@@ -1,0 +1,10 @@
+{
+  "id": "sample-terraform",
+  "error_log": "Error: Error creating S3 bucket: AccessDenied: Access Denied\n\tstatus code: 403, request id: EXAMPLE, host id: EXAMPLE",
+  "context": "Terraform apply failed while creating an S3 bucket in us-west-2.",
+  "expected_primary_cause_category": null,
+  "required_steps": [],
+  "must_cite": [],
+  "expect_domain_allowed": true,
+  "tags": ["smoke"]
+}

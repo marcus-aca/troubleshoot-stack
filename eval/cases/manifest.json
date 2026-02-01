@@ -1,0 +1,6 @@
+{
+  "sets": {
+    "smoke": ["sample-terraform", "sample-off-domain", "sample-terraform-followup", "sample-linting-followup"],
+    "full": ["sample-terraform", "sample-off-domain", "sample-terraform-followup", "sample-linting-followup"]
+  }
+}

@@ -6,7 +6,7 @@ CURRENT_DIR = os.path.dirname(__file__)
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, ".."))
 sys.path.append(PROJECT_ROOT)
 
-from app.main import redact_sensitive_text  # noqa: E402
+from app.utils.redaction_utils import redact_sensitive_text  # noqa: E402
 
 
 class RedactionTests(unittest.TestCase):

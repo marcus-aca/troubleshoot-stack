@@ -1,0 +1,5 @@
+{
+  "minimum_pass_rate_delta_absolute": -3.0,
+  "maximum_citation_miss_increase_absolute": 5.0,
+  "latency_p95_increase_ms": 200
+}

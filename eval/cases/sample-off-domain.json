@@ -1,0 +1,10 @@
+{
+  "id": "sample-off-domain",
+  "error_log": "What is the capital of France?",
+  "context": "User asked a general knowledge question unrelated to engineering troubleshooting.",
+  "expected_primary_cause_category": null,
+  "required_steps": [],
+  "must_cite": [],
+  "expect_domain_allowed": false,
+  "tags": ["smoke"]
+}

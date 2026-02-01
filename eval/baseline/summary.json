@@ -1,0 +1,16 @@
+{
+  "run_id": "baseline-placeholder",
+  "set_name": "full",
+  "total_cases": 0,
+  "passed": 0,
+  "failed": 0,
+  "pass_rate": 0.0,
+  "citation_miss_rate": 0.0,
+  "triage_latency_p50_ms": 0,
+  "triage_latency_p95_ms": 0,
+  "explain_latency_p50_ms": 0,
+  "explain_latency_p95_ms": 0,
+  "triage_url": "",
+  "explain_url": "",
+  "generated_at": ""
+}
