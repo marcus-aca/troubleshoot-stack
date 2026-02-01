@@ -148,6 +148,7 @@ const redactSensitive = (input: string) => {
 };
 
 export default function App() {
+  const repoUrl = "https://github.com/marcus-aca/troubleshoot-stack";
   const [rawText, setRawText] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -319,7 +320,13 @@ export default function App() {
       <header className="app-header">
         <div>
           <h1>Troubleshoot Stack</h1>
-          <p className="muted">AI-assisted log triage for production infrastructure.</p>
+          <p className="muted">AI-assisted triage tool powered by a production-ready platform.</p>
+        </div>
+        <div className="header-center">
+          <a className="source-link" href={repoUrl} target="_blank" rel="noreferrer">
+            <GitHubIcon />
+            <span>View source</span>
+          </a>
         </div>
         <div className="header-meta">
           <span className="tag">Conversation</span>
@@ -464,7 +471,7 @@ export default function App() {
               id="rawText"
               value={rawText}
               onChange={(event) => setRawText(event.target.value)}
-              placeholder="Share your response or question..."
+              placeholder="Your question or response..."
               rows={4}
               disabled={loading}
               ref={inputRef}
@@ -512,6 +519,15 @@ export default function App() {
     </div>
   );
 }
+
+const GitHubIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M12 2C6.48 2 2 6.58 2 12.26c0 4.55 2.87 8.41 6.84 9.78.5.1.68-.23.68-.5v-1.78c-2.78.63-3.36-1.2-3.36-1.2-.46-1.2-1.12-1.52-1.12-1.52-.92-.65.07-.64.07-.64 1.01.08 1.55 1.08 1.55 1.08.9 1.58 2.36 1.12 2.94.86.09-.67.35-1.12.64-1.38-2.22-.26-4.56-1.15-4.56-5.1 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .85-.28 2.78 1.05A9.42 9.42 0 0 1 12 6.9c.85 0 1.71.12 2.51.35 1.93-1.33 2.78-1.05 2.78-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.96-2.34 4.84-4.57 5.09.36.32.68.94.68 1.9v2.82c0 .28.18.6.69.5A10.05 10.05 0 0 0 22 12.26C22 6.58 17.52 2 12 2z"
+      fill="currentColor"
+    />
+  </svg>
+);
 const formatBudgetError = (detail: unknown) => {
   if (!detail || typeof detail !== "object") return null;
   const root = detail as Record<string, unknown>;
