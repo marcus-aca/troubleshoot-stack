@@ -8,14 +8,14 @@ locals {
       type   = "metric"
       x      = 0
       y      = 0
-      width  = 12
+      width  = 8
       height = 6
       properties = {
         title   = "API Gateway Latency (p50/p95/p99)"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
           ["AWS/ApiGateway", "Latency", "ApiName", var.api_gateway_name, "Stage", var.api_gateway_stage, { stat = "p50" }],
           [".", "Latency", ".", ".", ".", ".", { stat = "p95" }],
@@ -25,16 +25,16 @@ locals {
     },
     {
       type   = "metric"
-      x      = 12
+      x      = 8
       y      = 0
-      width  = 12
+      width  = 8
       height = 6
       properties = {
         title   = "API Gateway Requests & Errors"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
           ["AWS/ApiGateway", "Count", "ApiName", var.api_gateway_name, "Stage", var.api_gateway_stage, { stat = "Sum" }],
           [".", "4XXError", ".", ".", ".", ".", { stat = "Sum" }],
@@ -44,36 +44,18 @@ locals {
     },
     {
       type   = "metric"
-      x      = 0
-      y      = 6
-      width  = 12
-      height = 6
-      properties = {
-        title   = "ECS Tasks Desired vs Running"
-        view    = "timeSeries"
-        stacked = false
-        region  = data.aws_region.current.name
-        period  = 60
-        metrics = [
-          ["AWS/ECS", "DesiredTaskCount", "ClusterName", var.ecs_cluster_name, "ServiceName", var.ecs_service_name, { stat = "Average" }],
-          [".", "RunningTaskCount", ".", ".", ".", ".", { stat = "Average" }]
-        ]
-      }
-    },
-    {
-      type   = "metric"
-      x      = 12
-      y      = 6
-      width  = 12
+      x      = 16
+      y      = 0
+      width  = 8
       height = 6
       properties = {
         title   = "Cache Hit Rate"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
-          [var.custom_metrics_namespace, var.cache_hit_metric_name, { stat = "Average" }]
+          [var.custom_metrics_namespace, var.cache_hit_metric_name, "Endpoint", "explain", { stat = "Average" }]
         ]
       }
     }
@@ -81,15 +63,15 @@ locals {
     {
       type   = "metric"
       x      = 0
-      y      = 12
-      width  = 12
+      y      = 6
+      width  = 8
       height = 6
       properties = {
         title   = "API Service Latency (p50/p95)"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
           [var.custom_metrics_namespace, var.api_latency_metric_name, "Endpoint", "/triage", "StatusCode", "200", { stat = "p50" }],
           [".", var.api_latency_metric_name, ".", ".", ".", ".", { stat = "p95" }],
@@ -102,16 +84,34 @@ locals {
   alb_widgets = jsonencode([
     {
       type   = "metric"
-      x      = 0
-      y      = 12
-      width  = 12
+      x      = 8
+      y      = 6
+      width  = 8
+      height = 6
+      properties = {
+        title   = "Service Targets Healthy vs Unhealthy"
+        view    = "timeSeries"
+        stacked = false
+        region  = data.aws_region.current.name
+        period  = 300
+        metrics = [
+          ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", var.target_group_arn_suffix, "LoadBalancer", var.alb_arn_suffix, { stat = "Average" }],
+          [".", "UnHealthyHostCount", ".", ".", ".", ".", { stat = "Average" }]
+        ]
+      }
+    },
+    {
+      type   = "metric"
+      x      = 16
+      y      = 6
+      width  = 8
       height = 6
       properties = {
         title   = "ALB Target Response Time (p50/p95/p99)"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
           ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "p50" }],
           [".", "TargetResponseTime", ".", ".", ".", ".", { stat = "p95" }],
@@ -121,19 +121,21 @@ locals {
     },
     {
       type   = "metric"
-      x      = 12
+      x      = 0
       y      = 12
-      width  = 12
+      width  = 8
       height = 6
       properties = {
         title   = "ALB 5XX Errors"
         view    = "timeSeries"
         stacked = false
         region  = data.aws_region.current.name
-        period  = 60
+        period  = 300
         metrics = [
-          ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "Sum" }],
-          ["AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", var.alb_arn_suffix, { stat = "Sum" }]
+          ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", var.alb_arn_suffix, "TargetGroup", var.target_group_arn_suffix, { stat = "Sum", id = "m1", visible = false }],
+          ["AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", "LoadBalancer", var.alb_arn_suffix, { stat = "Sum", id = "m2", visible = false }],
+          [{ expression = "FILL(m1,0)", label = "Target 5XX", id = "e1" }],
+          [{ expression = "FILL(m2,0)", label = "ALB 5XX", id = "e2" }]
         ]
       }
     }

@@ -37,7 +37,14 @@ def _load_json_with_repair(payload: str) -> dict:
         return json.loads(payload)
     except json.JSONDecodeError:
         repaired = _repair_invalid_escapes(payload)
-        return json.loads(repaired)
+        repaired = _escape_control_chars_in_strings(repaired)
+        try:
+            return json.loads(repaired, strict=False)
+        except json.JSONDecodeError:
+            recovered = _try_insert_missing_commas(repaired)
+            if recovered is not None:
+                return recovered
+            return json.loads(repaired)
 
 
 def _repair_invalid_escapes(payload: str) -> str:
@@ -76,6 +83,70 @@ def _repair_invalid_escapes(payload: str) -> str:
         result.append(ch)
         i += 1
     return "".join(result)
+
+
+def _escape_control_chars_in_strings(payload: str) -> str:
+    result = []
+    in_string = False
+    escape = False
+    for ch in payload:
+        if in_string:
+            if escape:
+                result.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                result.append(ch)
+                escape = True
+                continue
+            if ch == "\"":
+                in_string = False
+                result.append(ch)
+                continue
+            if ch == "\n":
+                result.append("\\n")
+                continue
+            if ch == "\r":
+                result.append("\\r")
+                continue
+            if ch == "\t":
+                result.append("\\t")
+                continue
+            result.append(ch)
+            continue
+        else:
+            if ch == "\"":
+                in_string = True
+            result.append(ch)
+    return "".join(result)
+
+
+def _try_insert_missing_commas(payload: str, *, max_attempts: int = 3) -> dict | None:
+    current = payload
+    for _ in range(max_attempts):
+        try:
+            return json.loads(current, strict=False)
+        except json.JSONDecodeError as exc:
+            if "Expecting ',' delimiter" not in str(exc):
+                return None
+            pos = exc.pos
+            if pos <= 0 or pos >= len(current):
+                return None
+            prev_idx = pos - 1
+            while prev_idx >= 0 and current[prev_idx].isspace():
+                prev_idx -= 1
+            next_idx = pos
+            while next_idx < len(current) and current[next_idx].isspace():
+                next_idx += 1
+            if prev_idx < 0 or next_idx >= len(current):
+                return None
+            prev_ch = current[prev_idx]
+            next_ch = current[next_idx]
+            if prev_ch in ('"', "}", "]") and next_ch in ('"', "{", "["):
+                current = current[:pos] + "," + current[pos:]
+                continue
+            return None
+    return None
 
 
 def _recover_truncated_json(payload: str) -> str | None:

@@ -71,11 +71,26 @@ locals {
     }
   ]
 
+  xray_statement = [
+    {
+      Effect = "Allow"
+      Action = [
+        "xray:PutTraceSegments",
+        "xray:PutTelemetryRecords",
+        "xray:GetSamplingRules",
+        "xray:GetSamplingTargets",
+        "xray:GetSamplingStatisticSummaries"
+      ]
+      Resource = "*"
+    }
+  ]
+
   task_policy_statements = concat(
     local.dynamodb_policy_statement,
     local.s3_policy_statement,
     local.bedrock_policy_statement,
-    local.cloudwatch_metrics_statement
+    local.cloudwatch_metrics_statement,
+    local.xray_statement
   )
 
   task_policy_document = jsonencode({

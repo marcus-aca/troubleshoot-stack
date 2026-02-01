@@ -35,6 +35,7 @@ from .observability import (
     RollingRequestWindow,
     RollingWindowCounter,
     log_event,
+    configure_tracing,
     start_timer,
     stop_timer,
 )
@@ -43,11 +44,14 @@ from .utils.guardrail_utils import (
     is_non_informative,
     missing_required_details,
     normalize_text,
+    answer_likelihood,
+    likely_answers_question,
     rephrase_missing_details,
 )
 from .utils.redaction_utils import redact_sensitive_text as redact_sensitive_text_util
 
 app = FastAPI(title="Troubleshooter API", version="0.1.0")
+configure_tracing(app)
 
 storage = get_storage()
 parser = RuleBasedLogParser()
@@ -280,7 +284,13 @@ async def triage(payload: TriageRequest, request: Request) -> ChatResponse:
             metadata=_public_metadata(response.metadata),
             conversation_id=response.conversation_id,
         )
-    _enforce_budget_or_raise(redacted_text)
+    if not _budget_bypass_allowed(request):
+        _enforce_budget_or_raise(redacted_text)
+    else:
+        log_event(
+            "budget_bypass",
+            {"request_id": request_id, "conversation_id": conversation_id},
+        )
     try:
         response, _, frame = llm_orchestrator.triage(redacted_text, request_id, conversation_id)
     except (ValueError, ValidationError) as exc:
@@ -356,6 +366,21 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
     answered_pending = _answer_matches_pending(pending_question, raw_input)
     non_informative = is_non_informative(raw_input)
     missing_details = missing_required_details(pending_question, raw_input)
+    if pending_question and raw_input and not non_informative and not missing_details:
+        heuristic_score = answer_likelihood(pending_question, raw_input)
+        if heuristic_score >= 0.7:
+            answered_pending = True
+        elif heuristic_score <= 0.3:
+            answered_pending = False
+        else:
+            answered_pending, _ = llm_orchestrator.classify_answer(
+                question=pending_question,
+                answer=raw_input,
+                request_id=request_id,
+                conversation_id=conversation_id,
+            )
+        if likely_answers_question(pending_question, raw_input):
+            answered_pending = True
 
     tool_results_text = ""
     if tool_results:
@@ -436,7 +461,13 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
             conversation_id=cached_response.conversation_id,
         )
 
-    _enforce_budget_or_raise(cache_key)
+    if not _budget_bypass_allowed(request):
+        _enforce_budget_or_raise(cache_key)
+    else:
+        log_event(
+            "budget_bypass",
+            {"request_id": request_id, "conversation_id": conversation_id},
+        )
 
     try:
         response, _ = llm_orchestrator.explain(
@@ -461,6 +492,12 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
                 response.next_question = None
                 if response.completion_state == "needs_input":
                     response.completion_state = "final"
+    if answered_pending and pending_question:
+        if response.next_question and _normalize_text(response.next_question) == _normalize_text(pending_question):
+            response.next_question = None
+        message_norm = _normalize_text(response.assistant_message or "")
+        if message_norm == _normalize_text(pending_question):
+            response.assistant_message = "Thanks - got it. Proceeding with the analysis."
     if pending_question and raw_input and missing_details:
         if not response.next_question:
             response.next_question = rephrase_missing_details(missing_details)
@@ -619,6 +656,13 @@ def _enforce_budget_or_raise(text: str) -> None:
             "retry_after": decision.retry_after,
         },
     )
+
+
+def _budget_bypass_allowed(request: Request) -> bool:
+    if os.getenv("BUDGET_ALLOW_BYPASS", "false").lower() != "true":
+        return False
+    header = request.headers.get("x-budget-bypass", "").lower()
+    return header in ("1", "true", "yes")
 
 
 def _apply_guardrail_session_total(response: CanonicalResponse, conversation_id: str) -> None:

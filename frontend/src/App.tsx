@@ -319,7 +319,7 @@ export default function App() {
       <header className="app-header">
         <div>
           <h1>Troubleshoot Stack</h1>
-          <p className="muted">Interactive log triage with evidence-backed responses.</p>
+          <p className="muted">AI-assisted log triage for production infrastructure.</p>
         </div>
         <div className="header-meta">
           <span className="tag">Conversation</span>

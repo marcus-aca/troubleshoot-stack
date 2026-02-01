@@ -11,6 +11,16 @@ from typing import Deque, Dict, Iterable, Optional
 
 import boto3
 
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 LOGGER = logging.getLogger("troubleshooter")
@@ -19,6 +29,8 @@ if not LOGGER.handlers:
     handler.setFormatter(logging.Formatter("%(message)s"))
     LOGGER.addHandler(handler)
 LOGGER.setLevel(LOG_LEVEL)
+
+_TRACE_CONFIGURED = False
 
 
 class CloudWatchMetrics:
@@ -546,6 +558,29 @@ class RollingRequestWindow:
 def log_event(event: str, payload: Dict[str, object]) -> None:
     record = {"event": event, "timestamp_ms": int(time.time() * 1000), **payload}
     LOGGER.info(json.dumps(record, default=str))
+
+
+def configure_tracing(app=None) -> None:
+    global _TRACE_CONFIGURED
+    if _TRACE_CONFIGURED:
+        return
+    if os.getenv("OTEL_ENABLED", "false").lower() != "true":
+        return
+    service_name = os.getenv("OTEL_SERVICE_NAME", "troubleshooter-api")
+    resource = Resource.create({"service.name": service_name})
+    provider = TracerProvider(resource=resource)
+    exporter = OTLPSpanExporter(
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317"),
+        insecure=True,
+    )
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    trace.set_tracer_provider(provider)
+    if app is not None:
+        FastAPIInstrumentor().instrument_app(app)
+    RequestsInstrumentor().instrument()
+    BotocoreInstrumentor().instrument()
+    LoggingInstrumentor().instrument(set_logging_format=True)
+    _TRACE_CONFIGURED = True
 
 
 def start_timer() -> float:

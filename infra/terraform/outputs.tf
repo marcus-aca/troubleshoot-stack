@@ -113,3 +113,8 @@ output "observability_dashboard_url" {
   description = "CloudWatch dashboard URL for observability."
   value       = module.observability.dashboard_url
 }
+
+output "xray_service_map_url" {
+  description = "AWS X-Ray service map URL."
+  value       = "https://${var.region}.console.aws.amazon.com/xray/home?region=${var.region}#/service-map"
+}

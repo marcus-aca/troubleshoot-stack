@@ -233,3 +233,71 @@ def is_allowed_domain(text: str) -> bool:
     if re.search(r"\b(4\d{2}|5\d{2})\b", text):
         return True
     return False
+
+
+def likely_answers_question(question: str, answer: str) -> bool:
+    if not question or not answer:
+        return False
+    question_norm = normalize_text(question)
+    answer_norm = normalize_text(answer)
+
+    if any(token in question_norm for token in ("branch", "tag", "commit", "sha", "ref")):
+        if re.search(r"\\b(main|master|develop|release|hotfix|feature|bugfix|trunk|stable|head)\\b", answer_norm):
+            return True
+        if re.search(r"\\bv?\\d+\\.\\d+(\\.\\d+)?\\b", answer_norm):
+            return True
+        if re.search(r"\\b[a-f0-9]{7,40}\\b", answer_norm):
+            return True
+        if any(token in answer_norm for token in ("branch", "tag", "commit", "sha", "ref")):
+            return True
+
+    if any(token in question_norm for token in ("url", "source", "repo", "repository")):
+        if "http://" in answer_norm or "https://" in answer_norm or "git@" in answer_norm:
+            return True
+        if "github.com" in answer_norm or "gitlab.com" in answer_norm or "bitbucket.org" in answer_norm:
+            return True
+        if re.search(r"\\b[a-z0-9_.-]+/[a-z0-9_.-]+\\b", answer_norm):
+            return True
+
+    if any(token in question_norm for token in ("region", "zone")):
+        if re.search(r"\\b[a-z]{2}-[a-z]+-\\d\\b", answer_norm):
+            return True
+        if re.search(r"\\b(us|eu|ap|sa|ca|me|af)-[a-z-]+\\d\\b", answer_norm):
+            return True
+        if re.search(r"\\b[a-z]{2}-[a-z]+-\\d[a-z]\\b", answer_norm):
+            return True
+
+    if "which" in question_norm or "what" in question_norm:
+        if re.search(r"\\b(main|master|develop|release|trunk|stable|head)\\b", answer_norm):
+            return True
+        if re.search(r"\\bv?\\d+\\.\\d+(\\.\\d+)?\\b", answer_norm):
+            return True
+
+    return False
+
+
+def answer_likelihood(question: str, answer: str) -> float:
+    if not question or not answer:
+        return 0.0
+    if is_non_informative(answer):
+        return 0.0
+
+    score = 0.5
+    if likely_answers_question(question, answer):
+        score += 0.3
+    if looks_like_structured_payload(answer) or looks_like_error_message(answer):
+        score += 0.2
+
+    word_count = len(answer.split())
+    if word_count >= 6:
+        score += 0.1
+
+    missing = missing_required_details(question, answer)
+    if missing:
+        score -= 0.3
+
+    if score < 0.0:
+        return 0.0
+    if score > 1.0:
+        return 1.0
+    return score

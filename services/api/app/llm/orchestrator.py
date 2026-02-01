@@ -16,6 +16,7 @@ from .guardrails import GuardrailReport, citation_signature, enforce_guardrails
 from .json_utils import extract_json, sanitize_llm_output
 from .prompt_registry import PromptRegistry
 from ..observability import CloudWatchMetrics, log_event, start_timer, stop_timer
+from opentelemetry import trace
 
 
 class LLMOrchestrator:
@@ -40,12 +41,14 @@ class LLMOrchestrator:
         request_id: str,
         conversation_id: str,
     ) -> Tuple[CanonicalResponse, GuardrailReport, object]:
+        tracer = trace.get_tracer(__name__)
         frame = self.parser.parse(raw_text, request_id, conversation_id)
         prompt_meta = self.prompt_registry.get_prompt("triage")
         prompt = self._build_prompt("triage", frame.model_dump(), raw_text, conversation_id)
         timer = start_timer()
         try:
-            result = self.llm.generate(prompt, request_id=request_id)
+            with tracer.start_as_current_span("llm.generate", attributes={"endpoint": "triage"}):
+                result = self.llm.generate(prompt, request_id=request_id)
             payload = extract_json(result.text)
             payload = _normalize_llm_payload(payload, frame.evidence_map)
             llm_output = TriageLLMOutput.model_validate(payload)
@@ -139,11 +142,13 @@ class LLMOrchestrator:
         request_id: str,
         conversation_id: str,
     ) -> Tuple[CanonicalResponse, GuardrailReport]:
+        tracer = trace.get_tracer(__name__)
         prompt_meta = self.prompt_registry.get_prompt("explain")
         prompt = self._build_prompt("explain", frame or {}, response, conversation_id)
         timer = start_timer()
         try:
-            result = self.llm.generate(prompt, request_id=request_id)
+            with tracer.start_as_current_span("llm.generate", attributes={"endpoint": "explain"}):
+                result = self.llm.generate(prompt, request_id=request_id)
             payload = extract_json(result.text)
             payload = _normalize_llm_payload(payload, (frame or {}).get("evidence_map", []))
             llm_output = ExplainLLMOutput.model_validate(payload)
@@ -265,6 +270,66 @@ class LLMOrchestrator:
             guardrail_missing=guardrails.citation_missing_count,
             guardrail_redactions=guardrails.redactions,
         )
+
+    def classify_answer(
+        self,
+        *,
+        question: str,
+        answer: str,
+        request_id: str,
+        conversation_id: str,
+    ) -> tuple[bool, float]:
+        prompt = (
+            "Determine if the user's reply answers the question. "
+            "Return JSON: {\"answered\": true|false, \"confidence\": 0-1}.\n\n"
+            f"Question: {question}\n"
+            f"Answer: {answer}\n"
+            "Return ONLY valid JSON."
+        )
+        timer = start_timer()
+        try:
+            result = self.llm.generate(prompt, request_id=request_id)
+            payload = extract_json(result.text)
+            answered = bool(payload.get("answered"))
+            confidence = float(payload.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+            self._record_metrics(
+                endpoint="answer_classifier",
+                model_id=result.model_id,
+                latency_ms=stop_timer(timer),
+                token_usage=result.token_usage,
+                guardrails=GuardrailReport(),
+                success=True,
+            )
+            log_event(
+                "answer_classifier",
+                {
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "answered": answered,
+                    "confidence": confidence,
+                    "model_id": result.model_id,
+                },
+            )
+            return answered, confidence
+        except Exception as exc:
+            self._record_metrics(
+                endpoint="answer_classifier",
+                model_id=self.llm.model_id,
+                latency_ms=stop_timer(timer),
+                token_usage={},
+                guardrails=GuardrailReport(),
+                success=False,
+            )
+            log_event(
+                "answer_classifier_error",
+                {
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "error": str(exc),
+                },
+            )
+            return False, 0.0
 
 
 

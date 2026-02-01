@@ -42,24 +42,27 @@ module "ecs_service" {
   env_vars_secret_arns = []
   env_vars = merge(
     {
-      USE_DYNAMODB      = "true"
-      SESSION_TABLE     = var.session_table_name
-      INPUTS_TABLE      = var.inputs_table_name
-      INPUT_TTL_SECONDS = "86400"
+      USE_DYNAMODB              = "true"
+      SESSION_TABLE             = var.session_table_name
+      INPUTS_TABLE              = var.inputs_table_name
+      INPUT_TTL_SECONDS         = "86400"
       CONVERSATION_EVENTS_TABLE = var.conversation_events_table_name
       CONVERSATION_STATE_TABLE  = var.conversation_state_table_name
       CONVERSATION_TTL_SECONDS  = tostring(var.conversation_ttl_seconds)
-      AWS_REGION        = var.region
-      LLM_MODE          = var.llm_mode
-      BEDROCK_MODEL_ID  = var.bedrock_model_id
-      LLM_COST_PER_1K_TOKENS = tostring(var.llm_cost_per_1k_tokens)
-      CW_METRICS_ENABLED  = tostring(var.cw_metrics_enabled)
-      CW_METRICS_NAMESPACE = var.cw_metrics_namespace
-      BUDGET_ENABLED       = tostring(var.budget_enabled)
-      BUDGET_TABLE_NAME    = var.budget_table_name
-      BUDGET_TOKEN_LIMIT   = tostring(var.budget_token_limit)
-      BUDGET_WINDOW_MINUTES = tostring(var.budget_window_minutes)
-      CORS_ALLOWED_ORIGINS = var.api_cors_allow_origin
+      AWS_REGION                = var.region
+      LLM_MODE                  = var.llm_mode
+      BEDROCK_MODEL_ID          = var.bedrock_model_id
+      LLM_COST_PER_1K_TOKENS    = tostring(var.llm_cost_per_1k_tokens)
+      CW_METRICS_ENABLED        = tostring(var.cw_metrics_enabled)
+      CW_METRICS_NAMESPACE      = var.cw_metrics_namespace
+      BUDGET_ENABLED            = tostring(var.budget_enabled)
+      BUDGET_TABLE_NAME         = var.budget_table_name
+      BUDGET_TOKEN_LIMIT        = tostring(var.budget_token_limit)
+      BUDGET_WINDOW_MINUTES     = tostring(var.budget_window_minutes)
+      BUDGET_ALLOW_BYPASS       = tostring(var.budget_allow_bypass)
+      CORS_ALLOWED_ORIGINS      = var.api_cors_allow_origin
+      OTEL_ENABLED              = tostring(var.otel_enabled)
+      OTEL_SERVICE_NAME         = var.otel_service_name
     },
     var.ecs_env_vars,
     var.pgvector_enabled ? {
@@ -69,7 +72,7 @@ module "ecs_service" {
       PGVECTOR_DB       = var.pgvector_env_vars.POSTGRES_DB
       PGVECTOR_USER     = var.pgvector_env_vars.POSTGRES_USER
       PGVECTOR_PASSWORD = var.pgvector_env_vars.POSTGRES_PASSWORD
-    } : {
+      } : {
       PGVECTOR_ENABLED = "false"
     }
   )
@@ -80,11 +83,15 @@ module "ecs_service" {
   log_group_name        = local.ecs_log_group_name
   log_retention_in_days = var.observability_log_retention_in_days
 
-  pgvector_enabled             = var.pgvector_enabled
-  pgvector_image               = var.pgvector_image
-  pgvector_port                = var.pgvector_port
-  pgvector_env_vars            = var.pgvector_env_vars
+  pgvector_enabled              = var.pgvector_enabled
+  pgvector_image                = var.pgvector_image
+  pgvector_port                 = var.pgvector_port
+  pgvector_env_vars             = var.pgvector_env_vars
   pgvector_env_vars_secret_arns = var.pgvector_env_vars_secret_arns
+
+  otel_enabled         = var.otel_enabled
+  otel_service_name    = var.otel_service_name
+  otel_collector_image = var.otel_collector_image
 }
 
 module "iam" {
@@ -218,6 +225,7 @@ module "apigw" {
   usage_plans           = var.api_usage_plans
   log_retention_in_days = var.observability_log_retention_in_days
   cors_allow_origin     = var.api_cors_allow_origin
+  xray_tracing_enabled  = var.apigw_xray_tracing_enabled
 
   custom_domain_name = var.api_custom_domain_name
   certificate_arn    = var.api_custom_domain_certificate_arn

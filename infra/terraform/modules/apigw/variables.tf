@@ -95,3 +95,9 @@ variable "cors_allow_origin" {
   description = "Allowed CORS origin for API Gateway responses."
   default     = ""
 }
+
+variable "xray_tracing_enabled" {
+  type        = bool
+  description = "Enable X-Ray tracing on the API Gateway stage."
+  default     = true
+}

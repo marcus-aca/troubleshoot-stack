@@ -265,6 +265,12 @@ variable "api_cors_allow_origin" {
   default     = ""
 }
 
+variable "apigw_xray_tracing_enabled" {
+  type        = bool
+  description = "Enable X-Ray tracing on the API Gateway stage."
+  default     = true
+}
+
 variable "session_table_name" {
   type        = string
   description = "DynamoDB table name for sessions."
@@ -317,6 +323,12 @@ variable "budget_window_minutes" {
   type        = number
   description = "Window size in minutes for token budget enforcement."
   default     = 15
+}
+
+variable "budget_allow_bypass" {
+  type        = bool
+  description = "Allow budget bypass via header for eval runs."
+  default     = false
 }
 
 variable "uploads_bucket_name" {
@@ -433,6 +445,24 @@ variable "custom_metrics_namespace" {
   type        = string
   description = "Namespace for custom application metrics."
   default     = "Troubleshooter/LLM"
+}
+
+variable "otel_enabled" {
+  type        = bool
+  description = "Enable OpenTelemetry tracing via ADOT sidecar and X-Ray export."
+  default     = false
+}
+
+variable "otel_service_name" {
+  type        = string
+  description = "Service name used for tracing."
+  default     = "troubleshooter-api"
+}
+
+variable "otel_collector_image" {
+  type        = string
+  description = "OTel collector container image."
+  default     = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
 }
 
 variable "bedrock_model_arns" {
