@@ -48,6 +48,13 @@ npx openapi-cli validate docs/openapi.json
 ## Runbooks
 Operational runbooks are available under `docs/runbooks/`.
 
+## Tracing (OpenTelemetry + X-Ray)
+- Enable via Terraform: set `otel_enabled=true` (see `infra/terraform/terraform.tfvars`).
+- The API exports OTLP traces to an ADOT sidecar, which forwards to AWS X-Ray.
+See `docs/assets/trace.png`
+- X-Ray service map URL is available as a Terraform output: `xray_service_map_url`.
+See `docs/assets/trace_map.png`
+
 ## Makefile targets
 - `login-ecr`: Log in to the ECR registry referenced by Terraform outputs (requires `terraform apply` in `infra/terraform`).
 - `build-api`: Build the API Docker image (`troubleshooter-api:latest`).

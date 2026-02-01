@@ -35,8 +35,12 @@ api_usage_plans = [
   }
 ]
 api_cors_allow_origin = "https://ts-demo.marcus-aca.com"
+apigw_xray_tracing_enabled = true
 
 pgvector_enabled = true
+
+otel_enabled      = true
+otel_service_name = "troubleshooter-api"
 
 # Optional custom domain configuration
 api_custom_domain_name            = "troubleshooter.marcus-aca.com"

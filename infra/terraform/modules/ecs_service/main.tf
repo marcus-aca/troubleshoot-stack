@@ -130,18 +130,34 @@ resource "aws_ecs_task_definition" "this" {
             awslogs-stream-prefix = "api"
           }
         }
-        environment = [
-          for key, value in var.env_vars : {
-            name  = key
-            value = value
-          }
-        ]
-        dependsOn = var.pgvector_enabled ? [
-          {
-            containerName = "pgvector"
-            condition     = "HEALTHY"
-          }
-        ] : []
+        environment = concat(
+          [
+            for key, value in var.env_vars : {
+              name  = key
+              value = value
+            }
+          ],
+          var.otel_enabled ? [
+            {
+              name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+              value = "http://127.0.0.1:4317"
+            }
+          ] : []
+        )
+        dependsOn = concat(
+          var.pgvector_enabled ? [
+            {
+              containerName = "pgvector"
+              condition     = "HEALTHY"
+            }
+          ] : [],
+          var.otel_enabled ? [
+            {
+              containerName = "otel-collector"
+              condition     = "START"
+            }
+          ] : []
+        )
         healthCheck = {
           command     = ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:${var.port}/status')\""]
           interval    = 30
@@ -192,6 +208,54 @@ resource "aws_ecs_task_definition" "this" {
           for arn in var.pgvector_env_vars_secret_arns : {
             name      = basename(arn)
             valueFrom = arn
+          }
+        ]
+      }
+    ] : [],
+    var.otel_enabled ? [
+      {
+        name  = "otel-collector"
+        image = var.otel_collector_image
+        portMappings = [
+          {
+            containerPort = 4317
+            protocol      = "tcp"
+          }
+        ]
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-group         = local.log_group_name
+            awslogs-region        = data.aws_region.current.name
+            awslogs-stream-prefix = "otel"
+          }
+        }
+        command = [
+          "--config=env:OTEL_CONFIG"
+        ]
+        secrets = []
+        environment = [
+          {
+            name  = "AWS_REGION"
+            value = data.aws_region.current.name
+          },
+          {
+            name  = "OTEL_CONFIG"
+            value = <<-EOT
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+exporters:
+  awsxray:
+    region: ${data.aws_region.current.name}
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [awsxray]
+EOT
           }
         ]
       }

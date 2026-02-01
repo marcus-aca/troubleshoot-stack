@@ -13,6 +13,7 @@ import psycopg
 
 from ..observability import CloudWatchMetrics, RollingCacheHitRate, log_event
 from ..schemas import CanonicalResponse, IncidentFrame
+from opentelemetry import trace
 
 EMBED_MODEL_ID = "amazon.titan-embed-text-v2:0"
 EMBED_DIMENSIONS = 256
@@ -96,23 +97,25 @@ class PgVectorCache:
     def lookup(self, *, endpoint: str, query_text: str) -> Optional[CacheHit]:
         if not self.enabled:
             return None
+        tracer = trace.get_tracer(__name__)
         try:
-            sanitized = sanitize_text(query_text)
-            embedding = self._embed(sanitized)
-            vector_literal = _format_vector_literal(embedding)
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT response, 1 - (embedding <=> %s::vector) AS similarity
-                        FROM cache_entries
-                        WHERE expires_at > NOW()
-                        ORDER BY embedding <=> %s::vector
-                        LIMIT 1;
-                        """,
-                        (vector_literal, vector_literal),
-                    )
-                    row = cur.fetchone()
+            with tracer.start_as_current_span("cache.lookup", attributes={"endpoint": endpoint}):
+                sanitized = sanitize_text(query_text)
+                embedding = self._embed(sanitized)
+                vector_literal = _format_vector_literal(embedding)
+                with self._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            SELECT response, 1 - (embedding <=> %s::vector) AS similarity
+                            FROM cache_entries
+                            WHERE expires_at > NOW()
+                            ORDER BY embedding <=> %s::vector
+                            LIMIT 1;
+                            """,
+                            (vector_literal, vector_literal),
+                        )
+                        row = cur.fetchone()
             if not row:
                 self._emit_cache_metric(endpoint=endpoint, hit=False)
                 return None
@@ -132,26 +135,28 @@ class PgVectorCache:
     def put(self, *, endpoint: str, query_text: str, response: CanonicalResponse) -> None:
         if not self.enabled:
             return
+        tracer = trace.get_tracer(__name__)
         try:
-            sanitized = sanitize_text(query_text)
-            embedding = self._embed(sanitized)
-            vector_literal = _format_vector_literal(embedding)
-            payload = response.model_dump(mode="json")
-            with self._connect() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        INSERT INTO cache_entries (id, embedding, response, expires_at)
-                        VALUES (%s, %s::vector, %s::jsonb, NOW() + (%s || ' seconds')::interval);
-                        """,
-                        (
-                            str(uuid4()),
-                            vector_literal,
-                            json.dumps(payload),
-                            self.ttl_seconds,
-                        ),
-                    )
-                conn.commit()
+            with tracer.start_as_current_span("cache.put", attributes={"endpoint": endpoint}):
+                sanitized = sanitize_text(query_text)
+                embedding = self._embed(sanitized)
+                vector_literal = _format_vector_literal(embedding)
+                payload = response.model_dump(mode="json")
+                with self._connect() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO cache_entries (id, embedding, response, expires_at)
+                            VALUES (%s, %s::vector, %s::jsonb, NOW() + (%s || ' seconds')::interval);
+                            """,
+                            (
+                                str(uuid4()),
+                                vector_literal,
+                                json.dumps(payload),
+                                self.ttl_seconds,
+                            ),
+                        )
+                    conn.commit()
         except Exception as exc:
             log_event("cache_write_error", {"endpoint": endpoint, "error": str(exc)})
 

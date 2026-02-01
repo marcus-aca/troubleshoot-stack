@@ -140,3 +140,21 @@ variable "pgvector_env_vars_secret_arns" {
   description = "Secret ARNs to inject as environment variables into the pgvector sidecar."
   default     = []
 }
+
+variable "otel_enabled" {
+  type        = bool
+  description = "Enable OpenTelemetry collector sidecar and tracing."
+  default     = false
+}
+
+variable "otel_collector_image" {
+  type        = string
+  description = "OTel collector container image."
+  default     = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+}
+
+variable "otel_service_name" {
+  type        = string
+  description = "Service name for tracing."
+  default     = "troubleshooter-api"
+}

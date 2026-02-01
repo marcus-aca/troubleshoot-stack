@@ -60,6 +60,8 @@ module "ecs_service" {
       BUDGET_TOKEN_LIMIT   = tostring(var.budget_token_limit)
       BUDGET_WINDOW_MINUTES = tostring(var.budget_window_minutes)
       CORS_ALLOWED_ORIGINS = var.api_cors_allow_origin
+      OTEL_ENABLED         = tostring(var.otel_enabled)
+      OTEL_SERVICE_NAME    = var.otel_service_name
     },
     var.ecs_env_vars,
     var.pgvector_enabled ? {
@@ -85,6 +87,10 @@ module "ecs_service" {
   pgvector_port                = var.pgvector_port
   pgvector_env_vars            = var.pgvector_env_vars
   pgvector_env_vars_secret_arns = var.pgvector_env_vars_secret_arns
+
+  otel_enabled      = var.otel_enabled
+  otel_service_name = var.otel_service_name
+  otel_collector_image = var.otel_collector_image
 }
 
 module "iam" {
@@ -218,6 +224,7 @@ module "apigw" {
   usage_plans           = var.api_usage_plans
   log_retention_in_days = var.observability_log_retention_in_days
   cors_allow_origin     = var.api_cors_allow_origin
+  xray_tracing_enabled  = var.apigw_xray_tracing_enabled
 
   custom_domain_name = var.api_custom_domain_name
   certificate_arn    = var.api_custom_domain_certificate_arn

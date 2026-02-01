@@ -35,6 +35,7 @@ from .observability import (
     RollingRequestWindow,
     RollingWindowCounter,
     log_event,
+    configure_tracing,
     start_timer,
     stop_timer,
 )
@@ -50,6 +51,7 @@ from .utils.guardrail_utils import (
 from .utils.redaction_utils import redact_sensitive_text as redact_sensitive_text_util
 
 app = FastAPI(title="Troubleshooter API", version="0.1.0")
+configure_tracing(app)
 
 storage = get_storage()
 parser = RuleBasedLogParser()
