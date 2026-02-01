@@ -1,0 +1,11 @@
+{
+  "id": "sample-linting-followup",
+  "error_log": "CI failed: eslint reported errors.\nno-undef: 'trackEvent' is not defined (src/App.tsx:42)\nreact-hooks/exhaustive-deps: React Hook useEffect has missing dependencies (src/App.tsx:57).",
+  "context": "GitHub Actions pipeline failed on the lint step for the frontend.",
+  "follow_up": "We confirmed those exact errors. The files are committed. What should we check next?",
+  "expected_primary_cause_category": null,
+  "required_steps": [],
+  "must_cite": [],
+  "expect_domain_allowed": true,
+  "tags": ["smoke"]
+}

@@ -38,6 +38,14 @@ from .observability import (
     start_timer,
     stop_timer,
 )
+from .utils.guardrail_utils import (
+    is_allowed_domain,
+    is_non_informative,
+    missing_required_details,
+    normalize_text,
+    rephrase_missing_details,
+)
+from .utils.redaction_utils import redact_sensitive_text as redact_sensitive_text_util
 
 app = FastAPI(title="Troubleshooter API", version="0.1.0")
 
@@ -231,7 +239,7 @@ async def triage(payload: TriageRequest, request: Request) -> ChatResponse:
     request_id = payload.request_id or request.state.request_id
     conversation_id = payload.conversation_id or request_id
     raw_text = payload.raw_text.strip()
-    redacted_text, backend_redaction_hits = redact_sensitive_text(raw_text)
+    redacted_text, backend_redaction_hits = redact_sensitive_text_util(raw_text)
     client_redaction_hits = payload.redaction_hits or 0
 
     if not raw_text:
@@ -246,7 +254,7 @@ async def triage(payload: TriageRequest, request: Request) -> ChatResponse:
         },
     )
     input_id = storage.save_input(conversation_id, request_id, redacted_text)
-    if not _is_allowed_domain(redacted_text):
+    if not is_allowed_domain(redacted_text):
         response, frame = _domain_guardrail_response(
             request_id=request_id,
             conversation_id=conversation_id,
@@ -346,8 +354,8 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
         )
     pending_question = (latest_summary or {}).get("next_question") or ""
     answered_pending = _answer_matches_pending(pending_question, raw_input)
-    non_informative = _is_non_informative(raw_input)
-    missing_details = _missing_required_details(pending_question, raw_input)
+    non_informative = is_non_informative(raw_input)
+    missing_details = missing_required_details(pending_question, raw_input)
 
     tool_results_text = ""
     if tool_results:
@@ -378,7 +386,7 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
     if tool_results_text:
         parts.append(tool_results_text)
     enriched_input = "\n\n".join(parts).strip()
-    redacted_input, backend_redaction_hits = redact_sensitive_text(enriched_input)
+    redacted_input, backend_redaction_hits = redact_sensitive_text_util(enriched_input)
 
     incoming_frame = parser.parse(redacted_input or raw_input, request_id, conversation_id)
     merged_frame = _merge_frames(frame_obj, incoming_frame)
@@ -447,7 +455,7 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
     if pending_question and response.next_question and raw_input:
         if _normalize_text(response.next_question) == _normalize_text(pending_question):
             if missing_details:
-                response.next_question = _rephrase_missing_details(missing_details)
+                response.next_question = rephrase_missing_details(missing_details)
                 response.completion_state = "needs_input"
             else:
                 response.next_question = None
@@ -455,17 +463,17 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
                     response.completion_state = "final"
     if pending_question and raw_input and missing_details:
         if not response.next_question:
-            response.next_question = _rephrase_missing_details(missing_details)
+            response.next_question = rephrase_missing_details(missing_details)
             response.completion_state = "needs_input"
         message_norm = _normalize_text(response.assistant_message or "")
         if message_norm and (
-            message_norm == _normalize_text(pending_question)
-            or message_norm == _normalize_text(response.next_question or "")
+            message_norm == normalize_text(pending_question)
+            or message_norm == normalize_text(response.next_question or "")
         ):
             response.assistant_message = "Thanks — I still need one detail to proceed."
     if pending_question and raw_input:
-        pending_norm = _normalize_text(pending_question)
-        message_norm = _normalize_text(response.assistant_message or "")
+        pending_norm = normalize_text(pending_question)
+        message_norm = normalize_text(response.assistant_message or "")
         if message_norm and (message_norm == pending_norm or pending_norm in message_norm):
             if not (response.hypotheses or response.fix_steps):
                 response.assistant_message = (
@@ -651,79 +659,11 @@ def _compute_guardrail_hits_current(metadata: dict) -> int:
 
 
 def redact_sensitive_text(text: str) -> tuple[str, int]:
-    redacted = text
-    hits = 0
-
-    def sub(pattern: str, replacement: str, flags: int = 0) -> None:
-        nonlocal redacted, hits
-        redacted, count = re.subn(pattern, replacement, redacted, flags=flags)
-        hits += count
-
-    def luhn_check(value: str) -> bool:
-        total = 0
-        should_double = False
-        for ch in reversed(value):
-            if not ch.isdigit():
-                return False
-            digit = int(ch)
-            add = digit * 2 if should_double else digit
-            if add > 9:
-                add -= 9
-            total += add
-            should_double = not should_double
-        return total % 10 == 0
-
-    sub(r"-----BEGIN [\s\S]+? PRIVATE KEY-----[\s\S]+?-----END [\s\S]+? PRIVATE KEY-----", "[PRIVATE_KEY]")
-    sub(r"\bAKIA[0-9A-Z]{16}\b", "[AWS_ACCESS_KEY_ID]")
-    sub(r"\bASIA[0-9A-Z]{16}\b", "[AWS_ACCESS_KEY_ID]")
-    sub(r"\b[A-Za-z0-9/+=]{40}\b", "[AWS_SECRET_ACCESS_KEY]")
-    sub(r"\barn:aws[a-z-]*:[^\s]+", "[AWS_ARN]", flags=re.IGNORECASE)
-    sub(r"\b\d{12}\b", "[ACCOUNT_ID]")
-    sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "[JWT]")
-    sub(r"\bghp_[A-Za-z0-9]{36,}\b", "[GITHUB_TOKEN]")
-    sub(r"\bgho_[A-Za-z0-9]{36,}\b", "[GITHUB_TOKEN]")
-    sub(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b", "[SLACK_TOKEN]")
-    sub(r"\bAuthorization:\s*Bearer\s+[A-Za-z0-9._\-+/=]+\b", "Authorization: Bearer [BEARER_TOKEN]", flags=re.IGNORECASE)
-    sub(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", "[EMAIL]", flags=re.IGNORECASE)
-    sub(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b", "[IP_ADDRESS]")
-    sub(r"\b([0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\b", "[IPV6_ADDRESS]", flags=re.IGNORECASE)
-    sub(r"\b(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}\b", "[MAC_ADDRESS]", flags=re.IGNORECASE)
-    sub(r"\b[0-9A-F]{4}\.[0-9A-F]{4}\.[0-9A-F]{4}\b", "[MAC_ADDRESS]", flags=re.IGNORECASE)
-    sub(r"\b\d{3}-\d{2}-\d{4}\b", "[SSN]")
-    sub(r"\b\+?\d{1,3}[\s.-]?\(?\d{2,3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b", "[PHONE_NUMBER]")
-    sub(r"\b(passport|passport\s*no|passport\s*number)\b[:\s#-]*[A-Z0-9]{6,9}\b", "[PASSPORT_NUMBER]", flags=re.IGNORECASE)
-    sub(r"\b(driver'?s?\s*licen[cs]e|dl|d/l)\b[:\s#-]*[A-Z0-9-]{4,20}\b", "[DRIVER_LICENSE]", flags=re.IGNORECASE)
-    sub(r"\b(ein|tin|vat|abn|bn|gst|business\s*no|company\s*no)\b[:\s#-]*[A-Z0-9-]{5,}\b", "[BUSINESS_NUMBER]", flags=re.IGNORECASE)
-    redacted, count = re.subn(
-        r"\b(user(name)?|login|uid|user_id|account|owner)\b\s*[:=]\s*([^\s,;]+)",
-        lambda match: f"{match.group(1)}=[USERNAME]",
-        redacted,
-        flags=re.IGNORECASE,
-    )
-    hits += count
-    sub(r"\"(user(name)?|login|uid|user_id|account|owner)\"\s*:\s*\"([^\"]+)\"", "\"\\1\":\"[USERNAME]\"", flags=re.IGNORECASE)
-    redacted, count = re.subn(
-        r"\b(password|passwd|pwd|secret|token|api[_-]?key|apikey|auth|authorization)\b\s*[:=]\s*([^\s,;]+)",
-        lambda match: f"{match.group(1)}=[SECRET]",
-        redacted,
-        flags=re.IGNORECASE,
-    )
-    hits += count
-
-    def credit_card_replacer(match: re.Match[str]) -> str:
-        nonlocal hits
-        digits = re.sub(r"\D", "", match.group(0))
-        if 13 <= len(digits) <= 19 and luhn_check(digits):
-            hits += 1
-            return "[CREDIT_CARD]"
-        return match.group(0)
-
-    redacted = re.sub(r"\b(?:\d[ -]*?){13,19}\b", credit_card_replacer, redacted)
-    return redacted, hits
+    return redact_sensitive_text_util(text)
 
 
 def _normalize_text(value: str) -> str:
-    return " ".join(value.lower().split())
+    return normalize_text(value)
 
 
 def _answer_matches_pending(question: str, answer: str) -> bool:
@@ -741,124 +681,6 @@ def _answer_matches_pending(question: str, answer: str) -> bool:
     return any(option in answer_norm for option in options)
 
 
-def _is_non_informative(answer: str) -> bool:
-    if not answer:
-        return True
-    normalized = _normalize_text(answer)
-    if normalized in {
-        "no",
-        "nope",
-        "idk",
-        "i dont know",
-        "i don't know",
-        "dont know",
-        "don't know",
-        "not sure",
-        "unsure",
-        "unknown",
-        "n/a",
-        "na",
-        "none",
-        "cant",
-        "can't",
-        "cannot",
-        "dont have",
-        "don't have",
-        "dont have it",
-        "don't have it",
-        "i dont have it",
-        "i don't have it",
-        "not available",
-        "no idea",
-    }:
-        return True
-    return False
-
-
-def _is_allowed_domain(text: str) -> bool:
-    if not text:
-        return True
-    normalized = text.lower()
-    tokens = set(re.findall(r"[a-z0-9+/.-]+", normalized))
-    token_keywords = (
-        "terraform",
-        "pulumi",
-        "cloudformation",
-        "ansible",
-        "kubernetes",
-        "k8s",
-        "docker",
-        "helm",
-        "ecs",
-        "eks",
-        "lambda",
-        "s3",
-        "iam",
-        "vpc",
-        "gitlab",
-        "github",
-        "jenkins",
-        "circleci",
-        "pipeline",
-        "ci/cd",
-        "cicd",
-        "build",
-        "deploy",
-        "release",
-        "infra",
-        "iac",
-        "observability",
-        "logging",
-        "monitoring",
-        "alert",
-        "prometheus",
-        "grafana",
-        "cloudwatch",
-        "http",
-        "api",
-        "yaml",
-        "json",
-        "sql",
-        "database",
-        "redis",
-        "postgres",
-        "mysql",
-        "python",
-        "node",
-        "typescript",
-        "javascript",
-        "golang",
-        "java",
-        "rust",
-        "linux",
-        "nginx",
-        "kafka",
-        "queue",
-        "cache",
-    )
-    phrase_keywords = (
-        "stack trace",
-        "traceback",
-        "error",
-        "exception",
-        "failed",
-        "timeout",
-        "infra as code",
-        "infrastructure as code",
-    )
-    if any(keyword in tokens for keyword in token_keywords):
-        return True
-    if any(phrase in normalized for phrase in phrase_keywords):
-        return True
-    if re.search(r"```", text):
-        return True
-    if re.search(r"\b(class|def|function|SELECT|INSERT|UPDATE|FROM)\b", text, flags=re.IGNORECASE):
-        return True
-    if re.search(r"\b[A-Za-z0-9_/.-]+\.(py|js|ts|go|java|rb|tf|yaml|yml|json|sh|ps1)\b", text):
-        return True
-    if re.search(r"\b(4\d{2}|5\d{2})\b", text):
-        return True
-    return False
 
 
 def _domain_guardrail_response(
@@ -884,78 +706,3 @@ def _domain_guardrail_response(
         conversation_id=conversation_id,
     )
     return response, frame
-
-
-def _looks_like_structured_payload(answer: str) -> bool:
-    if not answer:
-        return False
-    if any(char in answer for char in ("{", "}", "<", ">", "\n")):
-        return True
-    if re.search(r"\b\w+\s*[:=]\s*[^,\s]+", answer):
-        return True
-    return False
-
-
-def _looks_like_error_message(answer: str) -> bool:
-    if not answer:
-        return False
-    normalized = _normalize_text(answer)
-    if any(token in normalized for token in ("error", "invalid", "exception", "failed", "denied")):
-        return True
-    if ":" in answer and len(answer) > 8:
-        return True
-    return False
-
-
-def _missing_required_details(question: str, answer: str) -> List[str]:
-    if not question or not answer:
-        return []
-    question_norm = _normalize_text(question)
-    missing: List[str] = []
-    payload_requested = any(
-        phrase in question_norm
-        for phrase in (
-            "request payload",
-            "response payload",
-            "payload",
-            "request body",
-            "json",
-            "xml",
-        )
-    )
-    if payload_requested and not _looks_like_structured_payload(answer):
-        missing.append("request payload")
-    error_requested = any(
-        phrase in question_norm
-        for phrase in (
-            "error response",
-            "error message",
-            "exact error",
-            "stack trace",
-            "stacktrace",
-            "trace",
-            "logs",
-            "log",
-        )
-    )
-    if error_requested and not _looks_like_error_message(answer):
-        missing.append("error response")
-    return missing
-
-
-def _rephrase_missing_details(missing: List[str]) -> str:
-    if not missing:
-        return "Could you share the missing detail? A redacted snippet or field list works too."
-    if len(missing) == 1 and missing[0] == "request payload":
-        return (
-            "I still need the request payload. If you can't share raw values, paste a redacted snippet "
-            "or list the fields you send."
-        )
-    if len(missing) == 1 and missing[0] == "error response":
-        return (
-            "I still need the exact error response. If you can't share raw values, paste a redacted snippet "
-            "or summarize the error code/message."
-        )
-    return (
-        "I still need the missing details. If you can't share raw values, paste a redacted snippet or list the fields."
-    )

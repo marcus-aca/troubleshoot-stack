@@ -1,0 +1,16 @@
+{
+  "citation_miss_rate": 0.0,
+  "explain_latency_p50_ms": 2542.0,
+  "explain_latency_p95_ms": 1085,
+  "explain_url": "https://troubleshooter.marcus-aca.com/live/explain",
+  "failed": 0,
+  "generated_at": "2026-02-01T00:44:27.531199+00:00",
+  "pass_rate": 100.0,
+  "passed": 4,
+  "run_id": "local-20260201T001409Z",
+  "set_name": "smoke",
+  "total_cases": 4,
+  "triage_latency_p50_ms": 1063.0,
+  "triage_latency_p95_ms": 1276,
+  "triage_url": "https://troubleshooter.marcus-aca.com/live/triage"
+}
