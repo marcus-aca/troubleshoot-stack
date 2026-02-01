@@ -1,6 +1,6 @@
 {
   "id": "sample-terraform-followup",
-  "error_log": "Error: Error creating S3 bucket: AccessDenied: Access Denied\n\tstatus code: 403, request id: EXAMPLE, host id: EXAMPLE",
+  "error_log": "Error: Error creating S3 bucket: AccessDenied: Access Denied\nstatus code: 403, request id: EXAMPLE, host id: EXAMPLE",
   "context": "Terraform apply failed while creating an S3 bucket in us-west-2.",
   "follow_up": "The provider uses role arn:aws:iam::123456789012:role/ci-terraform and it has s3:CreateBucket. Bucket policy is empty. The error is still AccessDenied in us-west-2.",
   "expected_primary_cause_category": null,

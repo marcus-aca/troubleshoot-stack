@@ -55,6 +55,9 @@ See `docs/assets/trace.png`
 - X-Ray service map URL is available as a Terraform output: `xray_service_map_url`.
 See `docs/assets/trace_map.png`
 
+## Eval notes
+- If token budgets are exhausted in a shared environment, run evals with `--budget-bypass` and set `BUDGET_ALLOW_BYPASS=true` on the API service.
+
 ## Makefile targets
 - `login-ecr`: Log in to the ECR registry referenced by Terraform outputs (requires `terraform apply` in `infra/terraform`).
 - `build-api`: Build the API Docker image (`troubleshooter-api:latest`).

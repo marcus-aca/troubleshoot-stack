@@ -325,6 +325,12 @@ variable "budget_window_minutes" {
   default     = 15
 }
 
+variable "budget_allow_bypass" {
+  type        = bool
+  description = "Allow budget bypass via header for eval runs."
+  default     = false
+}
+
 variable "uploads_bucket_name" {
   type        = string
   description = "Uploads bucket name."

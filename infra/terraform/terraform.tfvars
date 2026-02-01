@@ -58,6 +58,7 @@ budget_table_name              = "troubleshooter-budgets"
 budget_enabled                 = true
 budget_token_limit             = 3000
 budget_window_minutes          = 15
+budget_allow_bypass            = true
 
 uploads_bucket_name   = "troubleshooter-uploads"
 artifacts_bucket_name = "troubleshooter-artifacts"

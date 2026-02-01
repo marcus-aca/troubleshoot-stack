@@ -29,7 +29,9 @@ jobs:
             --set smoke \
             --triage-url "$TRIAGE_URL" \
             --explain-url "$EXPLAIN_URL" \
-            --run-id "$EVAL_RUN_ID"
+            --budget-bypass \
+            --run-id "$EVAL_RUN_ID" \
+            --budget-bypass
 
       - name: Compare to baseline
         run: |

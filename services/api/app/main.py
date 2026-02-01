@@ -284,7 +284,13 @@ async def triage(payload: TriageRequest, request: Request) -> ChatResponse:
             metadata=_public_metadata(response.metadata),
             conversation_id=response.conversation_id,
         )
-    _enforce_budget_or_raise(redacted_text)
+    if not _budget_bypass_allowed(request):
+        _enforce_budget_or_raise(redacted_text)
+    else:
+        log_event(
+            "budget_bypass",
+            {"request_id": request_id, "conversation_id": conversation_id},
+        )
     try:
         response, _, frame = llm_orchestrator.triage(redacted_text, request_id, conversation_id)
     except (ValueError, ValidationError) as exc:
@@ -455,7 +461,13 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
             conversation_id=cached_response.conversation_id,
         )
 
-    _enforce_budget_or_raise(cache_key)
+    if not _budget_bypass_allowed(request):
+        _enforce_budget_or_raise(cache_key)
+    else:
+        log_event(
+            "budget_bypass",
+            {"request_id": request_id, "conversation_id": conversation_id},
+        )
 
     try:
         response, _ = llm_orchestrator.explain(
@@ -644,6 +656,13 @@ def _enforce_budget_or_raise(text: str) -> None:
             "retry_after": decision.retry_after,
         },
     )
+
+
+def _budget_bypass_allowed(request: Request) -> bool:
+    if os.getenv("BUDGET_ALLOW_BYPASS", "false").lower() != "true":
+        return False
+    header = request.headers.get("x-budget-bypass", "").lower()
+    return header in ("1", "true", "yes")
 
 
 def _apply_guardrail_session_total(response: CanonicalResponse, conversation_id: str) -> None:

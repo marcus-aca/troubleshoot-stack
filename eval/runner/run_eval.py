@@ -81,6 +81,8 @@ def run_eval(args: argparse.Namespace) -> int:
         headers["x-api-key"] = args.api_key
     if args.auth_header:
         headers["Authorization"] = args.auth_header
+    if args.budget_bypass:
+        headers["x-budget-bypass"] = "true"
 
     case_results = []
     triage_latencies = []
@@ -248,6 +250,7 @@ def main() -> int:
     parser.add_argument("--set", dest="set_name", default="smoke")
     parser.add_argument("--triage-url", required=True)
     parser.add_argument("--explain-url", required=True)
+    parser.add_argument("--budget-bypass", action="store_true")
     parser.add_argument("--output-dir", default="eval/results")
     parser.add_argument("--run-id", default=os.getenv("EVAL_RUN_ID") or _now_run_id())
     parser.add_argument("--timeout", type=float, default=30.0)

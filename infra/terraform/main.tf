@@ -59,6 +59,7 @@ module "ecs_service" {
       BUDGET_TABLE_NAME         = var.budget_table_name
       BUDGET_TOKEN_LIMIT        = tostring(var.budget_token_limit)
       BUDGET_WINDOW_MINUTES     = tostring(var.budget_window_minutes)
+      BUDGET_ALLOW_BYPASS       = tostring(var.budget_allow_bypass)
       CORS_ALLOWED_ORIGINS      = var.api_cors_allow_origin
       OTEL_ENABLED              = tostring(var.otel_enabled)
       OTEL_SERVICE_NAME         = var.otel_service_name
