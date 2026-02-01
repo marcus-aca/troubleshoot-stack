@@ -37,6 +37,7 @@
 ## Observability
 - OpenTelemetry traces across API, LLM, and tool calls.
 - End-to-end service maps and sampling controls.
+- Include `trace_id` (and `span_id`) in CloudWatch log payloads for full log/trace correlation.
 
 ## CI/CD and eval automation
 - CI workflows for OpenAPI validation and Terraform checks.

@@ -19,19 +19,32 @@ body {
   max-width: 1280px;
   margin: 0 auto;
   padding: 32px 24px 48px;
-  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
 }
 
 .app-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "title center meta";
   align-items: flex-start;
-  justify-content: space-between;
   gap: 24px;
   margin-bottom: 16px;
   flex: 0 0 auto;
+}
+
+.app-header > :first-child {
+  grid-area: title;
+}
+
+.header-center {
+  grid-area: center;
+}
+
+.header-meta {
+  grid-area: meta;
 }
 
 .app-header h1 {
@@ -75,6 +88,13 @@ body {
   align-items: flex-end;
 }
 
+.header-center {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 6px;
+}
+
 .app-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
@@ -83,6 +103,31 @@ body {
   flex: 1;
   min-height: 0;
 }
+
+.source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.source-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.source-link:hover {
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.35);
+}
+
 
 .panel {
   background: rgba(15, 23, 42, 0.9);
@@ -416,6 +461,61 @@ button:hover:not(:disabled) {
 
   .chat-panel {
     height: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 24px 16px 32px;
+    height: auto;
+  }
+
+  .app-header {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "center"
+      "meta";
+    gap: 12px;
+  }
+
+  .header-center {
+    justify-content: flex-start;
+    padding-top: 0;
+  }
+
+  .header-meta {
+    align-items: flex-start;
+  }
+
+  .app-header h1 {
+    font-size: 26px;
+  }
+
+  .app-grid {
+    gap: 16px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .message {
+    max-width: 100%;
+  }
+
+  .message-meta {
+    flex-wrap: wrap;
+  }
+
+  .tool-call-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
