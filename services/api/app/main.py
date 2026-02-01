@@ -43,6 +43,8 @@ from .utils.guardrail_utils import (
     is_non_informative,
     missing_required_details,
     normalize_text,
+    answer_likelihood,
+    likely_answers_question,
     rephrase_missing_details,
 )
 from .utils.redaction_utils import redact_sensitive_text as redact_sensitive_text_util
@@ -356,6 +358,21 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
     answered_pending = _answer_matches_pending(pending_question, raw_input)
     non_informative = is_non_informative(raw_input)
     missing_details = missing_required_details(pending_question, raw_input)
+    if pending_question and raw_input and not non_informative and not missing_details:
+        heuristic_score = answer_likelihood(pending_question, raw_input)
+        if heuristic_score >= 0.7:
+            answered_pending = True
+        elif heuristic_score <= 0.3:
+            answered_pending = False
+        else:
+            answered_pending, _ = llm_orchestrator.classify_answer(
+                question=pending_question,
+                answer=raw_input,
+                request_id=request_id,
+                conversation_id=conversation_id,
+            )
+        if likely_answers_question(pending_question, raw_input):
+            answered_pending = True
 
     tool_results_text = ""
     if tool_results:
@@ -461,6 +478,12 @@ async def explain(payload: ExplainRequest, request: Request) -> ChatResponse:
                 response.next_question = None
                 if response.completion_state == "needs_input":
                     response.completion_state = "final"
+    if answered_pending and pending_question:
+        if response.next_question and _normalize_text(response.next_question) == _normalize_text(pending_question):
+            response.next_question = None
+        message_norm = _normalize_text(response.assistant_message or "")
+        if message_norm == _normalize_text(pending_question):
+            response.assistant_message = "Thanks - got it. Proceeding with the analysis."
     if pending_question and raw_input and missing_details:
         if not response.next_question:
             response.next_question = rephrase_missing_details(missing_details)

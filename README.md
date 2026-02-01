@@ -45,6 +45,9 @@ npx openapi-cli validate docs/openapi.json
 - **API unit tests**: `.github/workflows/api-unit-tests.yml` runs `make test-api` on PRs and pushes to `main`.
 - **Eval smoke tests**: `.github/workflows/eval-pr.yml` runs the eval smoke set on PRs or manual dispatch, then compares to `eval/baseline/summary.json` and publishes a job summary.
 
+## Runbooks
+Operational runbooks are available under `docs/runbooks/`.
+
 ## Makefile targets
 - `login-ecr`: Log in to the ECR registry referenced by Terraform outputs (requires `terraform apply` in `infra/terraform`).
 - `build-api`: Build the API Docker image (`troubleshooter-api:latest`).
@@ -86,5 +89,5 @@ make frontend-env
   - **Request IDs**: `x-request-id` is accepted or generated, then echoed as `X-Request-Id` and included in JSON logs.
   - **Structured logs**: the API emits JSON log lines for request start/end, errors, LLM calls, cache events, and budget denials.
   - **Metrics**: optional CloudWatch metrics for API/LLM latency, error rate, cache hit rate, and budget denials (with in-memory fallbacks when disabled).
-  - **Dashboards/alarms**: Terraform provisions CloudWatch dashboards and alarms via `infra/terraform/modules/observability`.
+  - **Dashboards/alarms**: Terraform provisions CloudWatch dashboards and alarms via `infra/terraform/modules/observability`. See `docs/assets/dashboard.png`.
 - An evaluation harness exists under `eval/` to run regression cases and compare against baselines.

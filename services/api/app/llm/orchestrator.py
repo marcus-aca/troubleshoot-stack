@@ -266,6 +266,66 @@ class LLMOrchestrator:
             guardrail_redactions=guardrails.redactions,
         )
 
+    def classify_answer(
+        self,
+        *,
+        question: str,
+        answer: str,
+        request_id: str,
+        conversation_id: str,
+    ) -> tuple[bool, float]:
+        prompt = (
+            "Determine if the user's reply answers the question. "
+            "Return JSON: {\"answered\": true|false, \"confidence\": 0-1}.\n\n"
+            f"Question: {question}\n"
+            f"Answer: {answer}\n"
+            "Return ONLY valid JSON."
+        )
+        timer = start_timer()
+        try:
+            result = self.llm.generate(prompt, request_id=request_id)
+            payload = extract_json(result.text)
+            answered = bool(payload.get("answered"))
+            confidence = float(payload.get("confidence", 0.5))
+            confidence = max(0.0, min(1.0, confidence))
+            self._record_metrics(
+                endpoint="answer_classifier",
+                model_id=result.model_id,
+                latency_ms=stop_timer(timer),
+                token_usage=result.token_usage,
+                guardrails=GuardrailReport(),
+                success=True,
+            )
+            log_event(
+                "answer_classifier",
+                {
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "answered": answered,
+                    "confidence": confidence,
+                    "model_id": result.model_id,
+                },
+            )
+            return answered, confidence
+        except Exception as exc:
+            self._record_metrics(
+                endpoint="answer_classifier",
+                model_id=self.llm.model_id,
+                latency_ms=stop_timer(timer),
+                token_usage={},
+                guardrails=GuardrailReport(),
+                success=False,
+            )
+            log_event(
+                "answer_classifier_error",
+                {
+                    "request_id": request_id,
+                    "conversation_id": conversation_id,
+                    "error": str(exc),
+                },
+            )
+            return False, 0.0
+
 
 
 def _normalize_llm_payload(payload: dict, evidence_map: list[object]) -> dict:
