@@ -1,9 +1,9 @@
 # Troubleshoot Stack
 
-Troubleshoot Stack is a log-triage system that parses raw logs into an incident frame, runs a structured triage/explain flow through an LLM adapter, and returns evidence-backed guidance through an API and a lightweight web UI. It is designed for safe iteration: request IDs, guardrails, budget limits, and observability are first-class.
+Troubleshoot Stack is a text-triage system that parses raw logs into an incident frame, runs a structured triage/explain flow through an LLM adapter, and returns evidence-backed guidance through an API and a lightweight web UI. It is designed for safe iteration: request IDs, guardrails, budget limits, and observability.
 
 ## What it does
-- Parses pasted logs (Terraform, CloudWatch, Python tracebacks, generic) into a normalized incident frame with evidence mapping.
+- Parses pasted text/logs (Terraform, CloudWatch, Python tracebacks, generic) into a normalized incident frame with evidence mapping.
 - Runs `/triage` for initial hypotheses and `/explain` for follow-ups, grounded in conversation context.
 - Enforces guardrails (citations, identifier redaction, domain restriction) and optional token budgets.
 - Exposes live operational summaries via `/metrics/summary` and `/budget/status`.
@@ -40,6 +40,10 @@ Alternate validator:
 ```bash
 npx openapi-cli validate docs/openapi.json
 ```
+
+## CI automation (current status)
+- **API unit tests**: `.github/workflows/api-unit-tests.yml` runs `make test-api` on PRs and pushes to `main`.
+- **Eval smoke tests**: `.github/workflows/eval-pr.yml` runs the eval smoke set on PRs or manual dispatch, then compares to `eval/baseline/summary.json` and publishes a job summary.
 
 ## Makefile targets
 - `login-ecr`: Log in to the ECR registry referenced by Terraform outputs (requires `terraform apply` in `infra/terraform`).
@@ -78,5 +82,9 @@ make frontend-env
 ## Operational focus (current strengths)
 - Infrastructure is fully codified (VPC, ECS/ALB, API Gateway usage plans, DynamoDB, CloudFront).
 - Guardrails and budgets are enforced in the request path with audit-friendly metadata.
-- Observability is wired end-to-end (request IDs, structured logs, CloudWatch metrics, dashboards/alarms).
+- Observability is wired end-to-end:
+  - **Request IDs**: `x-request-id` is accepted or generated, then echoed as `X-Request-Id` and included in JSON logs.
+  - **Structured logs**: the API emits JSON log lines for request start/end, errors, LLM calls, cache events, and budget denials.
+  - **Metrics**: optional CloudWatch metrics for API/LLM latency, error rate, cache hit rate, and budget denials (with in-memory fallbacks when disabled).
+  - **Dashboards/alarms**: Terraform provisions CloudWatch dashboards and alarms via `infra/terraform/modules/observability`.
 - An evaluation harness exists under `eval/` to run regression cases and compare against baselines.

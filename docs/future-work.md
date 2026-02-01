@@ -39,5 +39,9 @@
 - End-to-end service maps and sampling controls.
 
 ## CI/CD and eval automation
-- CI workflows for tests, OpenAPI validation, and Terraform checks.
+- CI workflows for OpenAPI validation and Terraform checks.
 - Scheduled eval runs with gating thresholds in CI.
+
+## Already in place (not future work)
+- GitHub Actions for API unit tests (`.github/workflows/api-unit-tests.yml`).
+- GitHub Actions smoke eval runs + baseline comparison (`.github/workflows/eval-pr.yml`).
