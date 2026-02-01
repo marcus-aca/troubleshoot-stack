@@ -32,6 +32,18 @@ def compare(current: Dict[str, Any], baseline: Dict[str, Any], thresholds: Dict[
     current_p95, baseline_p95 = _get("triage_latency_p95_ms", current, baseline)
     if current_p95 is not None and baseline_p95 is not None:
         results["triage_latency_p95_delta_ms"] = _delta(current_p95, baseline_p95)
+        if baseline_p95:
+            results["triage_latency_p95_delta_percent"] = round(
+                ((current_p95 - baseline_p95) / baseline_p95) * 100.0, 2
+            )
+
+    current_p50, baseline_p50 = _get("triage_latency_p50_ms", current, baseline)
+    if current_p50 is not None and baseline_p50 is not None:
+        results["triage_latency_p50_delta_ms"] = _delta(current_p50, baseline_p50)
+        if baseline_p50:
+            results["triage_latency_p50_delta_percent"] = round(
+                ((current_p50 - baseline_p50) / baseline_p50) * 100.0, 2
+            )
 
     failures = []
     min_pass_drop = thresholds.get("minimum_pass_rate_delta_absolute")
@@ -48,6 +60,16 @@ def compare(current: Dict[str, Any], baseline: Dict[str, Any], thresholds: Dict[
     if max_p95_increase is not None and "triage_latency_p95_delta_ms" in results:
         if results["triage_latency_p95_delta_ms"] > max_p95_increase:
             failures.append("triage_latency_p95_delta_ms")
+
+    max_p95_increase_pct = thresholds.get("latency_p95_increase_percent")
+    if max_p95_increase_pct is not None and "triage_latency_p95_delta_percent" in results:
+        if results["triage_latency_p95_delta_percent"] > max_p95_increase_pct:
+            failures.append("triage_latency_p95_delta_percent")
+
+    max_p50_increase_pct = thresholds.get("latency_p50_increase_percent")
+    if max_p50_increase_pct is not None and "triage_latency_p50_delta_percent" in results:
+        if results["triage_latency_p50_delta_percent"] > max_p50_increase_pct:
+            failures.append("triage_latency_p50_delta_percent")
 
     results["failed_checks"] = failures
     return results
