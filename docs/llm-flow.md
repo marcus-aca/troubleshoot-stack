@@ -1,6 +1,6 @@
-# LLM Orchestration Flow (Parser → Context → LLM → Guardrails → Response)
+# LLM Orchestration Flow (current implementation)
 
-## Diagram (high level)
+## High-level flow
 ```
 Raw logs / user input
         |
@@ -17,213 +17,46 @@ Storage (save input/frame + compact context)
         |
         v
 PromptRegistry + Orchestrator
-  - prompt template (v1)
-  - context (recent events + frame + evidence)
+  - triage: v3 prompt
+  - explain: v2 prompt
         |
         v
-LLM Adapter (Bedrock or stub)
+LLM Adapter
+  - Bedrock (LLM_MODE=bedrock)
+  - Stub (LLM_MODE=stub, default)
         |
         v
 LLM JSON Output (TriageLLMOutput / ExplainLLMOutput)
         |
         v
 Guardrails
-  - enforce citations
-  - redact identifiers
+  - enforce citations against evidence_map
+  - redact ARNs/account IDs in hypothesis text
         |
         v
 CanonicalResponse
 ```
 
-## Example data shapes (mocked)
+## Explain request behavior
+- `/explain` requires a `conversation_id`.
+- If `incident_frame` is omitted, the API reuses the latest frame from conversation state.
+- If there is no prior state, the API returns a `needs_input` response asking for the raw log or trace.
+- `tool_results` (if provided) are appended to the user input before the LLM call.
 
-### NormalizedLine / NormalizedLog
-```json
-{
-  "raw_text": "2026-01-30T11:23:45Z Error: AccessDenied ...\n2026-01-30T11:23:46Z ...",
-  "lines": [
-    { "number": 1, "text": "2026-01-30T11:23:45Z Error: AccessDenied ...", "lowered": "2026-01-30t11:23:45z error: accessdenied ..." },
-    { "number": 2, "text": "2026-01-30T11:23:46Z ...", "lowered": "2026-01-30t11:23:46z ..." }
-  ],
-  "timestamps": ["2026-01-30T11:23:45Z", "2026-01-30T11:23:46Z"]
-}
-```
+## Caching
+- `/explain` responses can be cached via `PgVectorCache` when `PGVECTOR_ENABLED=true`.
+- Cache keys include the response text plus primary error signature and detected services/infra components.
+- Cache metadata is surfaced in response `metadata.cache_hit` and `metadata.cache_similarity`.
 
-### EvidenceMapEntry
-```json
-{
-  "source_type": "log",
-  "source_id": "raw-input",
-  "line_start": 1,
-  "line_end": 1,
-  "excerpt_hash": "5f3c1f0f..."
-}
-```
+## Guardrails (current)
+- Hypotheses must cite evidence map entries; missing citations reduce confidence and annotate the explanation.
+- ARNs and account IDs are redacted in hypothesis explanations, further reducing confidence.
+- Tool calls are limited to one per response; if a tool call is returned with `completion_state=final`, it is downgraded to `needs_input`.
+- A domain-restriction guardrail is enforced in `/triage` (non-DevOps requests return a fixed response).
 
-### IncidentFrame (parser output)
-```json
-{
-  "frame_id": "frame-123",
-  "conversation_id": "conv-abc",
-  "request_id": "req-xyz",
-  "source": "user_input",
-  "parser_version": "rule-based-v1",
-  "parse_confidence": 0.72,
-  "created_at": "2026-01-30T11:23:50Z",
-  "primary_error_signature": "2026-01-30T11:23:45Z Error: AccessDenied ...",
-  "secondary_signatures": ["on main.tf line 12"],
-  "time_window": { "start": "2026-01-30T11:23:45Z", "end": "2026-01-30T11:23:46Z" },
-  "services": ["api"],
-  "infra_components": ["terraform"],
-  "suspected_failure_domain": "iam",
-  "evidence_map": [
-    {
-      "source_type": "log",
-      "source_id": "raw-input",
-      "line_start": 1,
-      "line_end": 1,
-      "excerpt_hash": "5f3c1f0f..."
-    }
-  ]
-}
-```
-
-### LLM context (built for prompt)
-```json
-{
-  "conversation_id": "conv-abc",
-  "latest_incident_frame": {
-    "primary_error_signature": "2026-01-30T11:23:45Z Error: AccessDenied ..."
-  },
-  "latest_response_summary": {
-    "top_hypothesis": {
-      "id": "hyp-1",
-      "confidence": 0.62,
-      "explanation": "Permission issue on IAM role creation."
-    }
-  },
-  "recent_events": [
-    {
-      "request_id": "req-prev",
-      "primary_error_signature": "Timeout contacting upstream",
-      "services": ["api"],
-      "infra_components": ["alb"],
-      "top_hypothesis": { "id": "hyp-timeout", "confidence": 0.61 }
-    }
-  ],
-  "prompt": "You are an expert troubleshooting assistant... Evidence map: [...]"
-}
-```
-
-### Explain request guardrails
-- `/explain` requires a `conversation_id` and an existing triage session.
-- If `incident_frame` is omitted, the API reuses the latest frame from the conversation state.
-
-### Triage LLM output (before guardrails)
-```json
-{
-  "category": "iam",
-  "assistant_message": "I need the IAM policy attached to the role to confirm permissions. Please run the command below.",
-  "completion_state": "needs_input",
-  "next_question": "Run the command and paste the output.",
-  "tool_calls": [
-    {
-      "id": "tool-iam-1",
-      "title": "Fetch IAM role policy",
-      "command": "aws iam get-role-policy --role-name example-role --policy-name InlinePolicy",
-      "expected_output": "Policy document JSON"
-    }
-  ],
-  "hypotheses": [
-    {
-      "id": "hyp-iam-1",
-      "rank": 1,
-      "confidence": 0.7,
-      "explanation": "IAM policy lacks permissions for role creation.",
-      "citations": [
-        {
-          "source_type": "log",
-          "source_id": "raw-input",
-          "line_start": 1,
-          "line_end": 1,
-          "excerpt_hash": "5f3c1f0f..."
-        }
-      ]
-    }
-  ],
-  "fix_steps": []
-}
-```
-
-### Explain LLM output (after tool output)
-```json
-{
-  "assistant_message": "The role policy is missing iam:CreateRole. Add it and re-run terraform apply.",
-  "completion_state": "final",
-  "next_question": null,
-  "tool_calls": [],
-  "hypotheses": [
-    {
-      "id": "hyp-iam-1",
-      "rank": 1,
-      "confidence": 0.62,
-      "explanation": "AccessDenied indicates missing IAM permissions.",
-      "citations": [
-        {
-          "source_type": "log",
-          "source_id": "raw-input",
-          "line_start": 1,
-          "line_end": 1,
-          "excerpt_hash": "5f3c1f0f..."
-        }
-      ]
-    }
-  ],
-  "fix_steps": ["Add iam:CreateRole to the policy and re-apply."]
-}
-```
-
-### CanonicalResponse (after guardrails)
-```json
-{
-  "request_id": "req-xyz",
-  "timestamp": "2026-01-30T11:23:55Z",
-  "assistant_message": "The role policy is missing iam:CreateRole. Add it and re-run terraform apply.",
-  "completion_state": "final",
-  "next_question": null,
-  "tool_calls": [],
-  "hypotheses": [
-    {
-      "id": "hyp-iam-1",
-      "rank": 1,
-      "confidence": 0.62,
-      "explanation": "AccessDenied indicates missing IAM permissions.",
-      "citations": [
-        {
-          "source_type": "log",
-          "source_id": "raw-input",
-          "line_start": 1,
-          "line_end": 1,
-          "excerpt_hash": "5f3c1f0f..."
-        }
-      ]
-    }
-  ],
-  "fix_steps": ["Add iam:CreateRole to the policy and re-apply."],
-  "metadata": {
-    "prompt_version": "v2",
-    "prompt_filename": "services/api/prompts/v2/explain/explain.md",
-    "model_id": "amazon.titan-text-lite-v1",
-    "token_usage": { "prompt_tokens": 312, "completion_tokens": 178, "total_tokens": 490, "generated_at_ms": 1769797435000 },
-    "guardrails": { "citation_missing_count": 0, "redactions": 0, "domain_restricted": 0, "issues": [] }
-  },
-  "conversation_id": "conv-abc"
-}
-```
-
-## Flow summary
-- Parser extracts a stable incident frame from raw logs and maps evidence lines.
-- Storage keeps recent events; a compact summary is used for context.
-- Prompt registry pins the prompt version used by each endpoint.
-- LLM returns structured JSON; guardrails validate citations, redact identifiers, and enforce domain-only requests.
-- The API returns a canonical response with metadata for auditability.
+## Response metadata (selected fields)
+- `prompt_version`, `prompt_filename`, `model_id`, `token_usage`
+- `guardrails` (citation_missing_count, redactions)
+- `cache_hit`, `cache_similarity`
+- `guardrail_hits_session`, `client_redaction_hits`, `backend_redaction_hits`
+- `cost_estimate_usd` (derived from token usage)

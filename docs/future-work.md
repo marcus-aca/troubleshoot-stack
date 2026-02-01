@@ -1,13 +1,13 @@
 # Future work
 
-## Better hypothesis matching beyond keywords
+## Parsing and hypothesis quality
 1) **Structured error signature extraction**
 - Parse common log formats into fields (`error_code`, `service`, `operation`, `resource`, `status_code`).
 - Match on `error_code` (e.g., `AccessDenied`, `UnauthorizedOperation`, `ThrottlingException`) instead of raw text.
 
 2) **Rule-based regex patterns per log family**
-- Regexes for known error shapes (AWS, Terraform, Python tracebacks, Kubernetes).
-- Map pattern → hypothesis + confidence.
+- Regexes for known error shapes (AWS, Terraform, Kubernetes).
+- Map pattern -> hypothesis + confidence.
 
 3) **Weighted scoring over features**
 - Build a feature set (error_code, status_code, service tokens, retry hints, timeout indicators).
@@ -29,3 +29,15 @@
 2) **Stronger citation enforcement**
 - Enforce minimum evidence coverage for top hypotheses before returning.
 - Flag hypotheses with weak evidence for manual review.
+
+## Tooling and ingestion
+- Secure upload flow (pre-signed S3, redaction pipeline, metadata storage).
+- Automated tool execution and result capture, with strict allow-lists.
+
+## Observability
+- OpenTelemetry traces across API, LLM, and tool calls.
+- End-to-end service maps and sampling controls.
+
+## CI/CD and eval automation
+- CI workflows for tests, OpenAPI validation, and Terraform checks.
+- Scheduled eval runs with gating thresholds in CI.
