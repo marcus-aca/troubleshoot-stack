@@ -30,6 +30,10 @@
 - Enforce minimum evidence coverage for top hypotheses before returning.
 - Flag hypotheses with weak evidence for manual review.
 
+3) **Redaction-aware triage logic**
+- Detect redacted/missing identifiers and avoid asking for those values unless strictly required.
+- Steer prompts toward actionable next steps and rapid convergence on likely causes.
+
 ## Tooling and ingestion
 - Secure upload flow (pre-signed S3, redaction pipeline, metadata storage).
 - Automated tool execution and result capture, with strict allow-lists.

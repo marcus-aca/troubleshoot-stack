@@ -1,6 +1,6 @@
 # Troubleshoot Stack
 
-A production‑ready AI triage platform that demonstrates end‑to‑end platform engineering across infrastructure, observability, governance, and LLM reliability. It parses raw logs into incident frames, runs structured triage/explain flows, and returns evidence‑backed guidance through an API and lightweight web UI, with budgets, guardrails, and evaluation gates baked in.
+A production‑style AI triage platform template that demonstrates end‑to‑end platform engineering across infrastructure, observability, governance, and LLM reliability. It is designed as a reference implementation (live demo). It parses raw logs into incident frames, runs structured triage/explain flows, and returns evidence‑backed guidance through an API and lightweight web UI, with budgets, guardrails, and evaluation gates baked in.
 
 ## Value delivered
 - **Faster incident triage**: normalizes logs into evidence‑mapped incident frames and produces actionable hypotheses and fix steps.
@@ -8,7 +8,7 @@ A production‑ready AI triage platform that demonstrates end‑to‑end platfor
 - **Operational readiness**: request IDs, structured logs, metrics dashboards/alarms, and tracing.
 - **Regression safety**: built‑in eval harness with baseline comparison (`eval/`).
 
-## Platform attributes
+## Platform attributes (template design)
 - **Production IaC**: Terraform modules for VPC, ECS/ALB, API Gateway, DynamoDB, CloudFront, and observability.
 - **APM-grade telemetry**: OpenTelemetry → ADOT sidecar → AWS X‑Ray, plus CloudWatch logs/metrics.
 - **CI quality gates**: OpenAPI linting, Terraform validation, API unit tests, and eval smoke runs.
@@ -30,7 +30,7 @@ make frontend-env
 make deploy-frontend 
 ```
 
-## Architecture (current implementation)
+## Architecture (reference implementation)
 - **API**: FastAPI on ECS Fargate behind ALB + API Gateway (REST), with request IDs and structured JSON logs.
 - **State**: DynamoDB tables for inputs, sessions, conversation events/state, and budgets (optional via `USE_DYNAMODB=true`; otherwise in‑memory).
 - **Caching**: Optional `pgvector` sidecar cache for `/explain` with Bedrock embeddings.
@@ -116,6 +116,7 @@ make frontend-env
 - **Citation normalization**: normalizes/filters citations to the allowed evidence map; missing citations are flagged.
 - **Safety redaction**: identifier redaction is applied to model output where needed, with counts tracked.
 - **Fallback responses**: guardrail-triggered fallbacks return structured prompts for missing details or restricted domains.
+- **Triage focus improvements**: planned logic refinements to reduce unnecessary requests for redacted data and converge faster on root cause.
 
 ## Operational focus (current strengths)
 - Infrastructure is fully codified (VPC, ECS/ALB, API Gateway usage plans, DynamoDB, CloudFront).
